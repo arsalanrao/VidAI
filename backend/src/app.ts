@@ -6,6 +6,7 @@ import { registerProjectRoutes } from './api/routes/project.routes.js';
 import { videoQueue } from './queues/video.queue.js';
 import { startPipelineWorker } from './workers/pipeline.worker.js';
 import { checkR2Connection } from './services/storage/r2.service.js';
+import { isYtDlpAvailable } from './services/youtube/ytdlp.service.js';
 import type { Worker } from 'bullmq';
 
 let worker: Worker | undefined;
@@ -59,6 +60,12 @@ async function buildApp() {
       return reply.status(503).send({ ok: false, r2: 'disconnected' });
     }
   });
+
+  app.get('/health/youtube', async () => ({
+    ok: true,
+    ytdlp: isYtDlpAvailable(),
+    ytdlpPath: env.ytdlpPath || './bin/yt-dlp',
+  }));
 
   await registerProjectRoutes(app);
 

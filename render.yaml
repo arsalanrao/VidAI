@@ -8,7 +8,7 @@ services:
     plan: free
     rootDir: backend
     buildCommand: mkdir -p bin && curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o bin/yt-dlp && chmod +x bin/yt-dlp && npm install --include=dev && npx prisma generate && npm run build
-    startCommand: npx prisma db push && npm start
+    startCommand: test -x bin/yt-dlp || (mkdir -p bin && curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o bin/yt-dlp && chmod +x bin/yt-dlp); npx prisma db push && npm start
     healthCheckPath: /health
     envVars:
       - key: NODE_ENV

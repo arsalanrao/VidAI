@@ -38,9 +38,7 @@ async function fetchVideoTitle(url: string): Promise<string> {
   return data.title?.trim() || 'Untitled YouTube video';
 }
 
-function joinSegments(
-  segments: Array<{ text: string }>,
-): string {
+function joinSegments(segments: Array<{ text: string }>): string {
   return segments
     .map((segment) => segment.text.trim())
     .filter(Boolean)
@@ -78,17 +76,12 @@ export async function extractYouTubeSource(youtubeUrl: string): Promise<YouTubeE
 
   const ytdlpResult = await extractViaYtDlp(youtubeUrl);
 
-  if (ytdlpResult) {
-    const fromDescription =
-      ytdlpResult.transcript.length < 200 &&
-      !ytdlpResult.transcript.includes('.') &&
-      ytdlpResult.transcript.split(' ').length < 30;
-
+  if (ytdlpResult.ok) {
     return {
       videoId,
       title: ytdlpResult.title,
       transcript: ytdlpResult.transcript,
-      transcriptSource: fromDescription ? 'description' : 'captions',
+      transcriptSource: ytdlpResult.source,
     };
   }
 
@@ -107,6 +100,6 @@ export async function extractYouTubeSource(youtubeUrl: string): Promise<YouTubeE
   }
 
   throw new Error(
-    'Could not get captions for this video. Use a public YouTube video that has subtitles turned on (CC button), then try again.',
+    `Transcript extraction failed. ${ytdlpResult.reason}. Caption library also failed (YouTube often blocks cloud servers).`,
   );
 }
