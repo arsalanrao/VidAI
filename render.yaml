@@ -31,6 +31,14 @@ services:
         sync: false
       - key: OPENAI_API_KEY
         sync: false
+      - key: TTS_PROVIDER
+        value: magpie
+      - key: TTS_VOICE
+        value: Magpie-Multilingual.EN-US.Aria
+      - key: TTS_LANGUAGE
+        value: en-US
+      - key: MAGPIE_FUNCTION_ID
+        value: 877104f7-e885-42b9-8de8-f6e4c6303969
       - key: MAGPIE_API_KEY
         sync: false
       - key: PC_SERVER_URL

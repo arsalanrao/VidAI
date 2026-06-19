@@ -9,6 +9,7 @@ import { checkR2Connection } from './services/storage/r2.service.js';
 import { isYtDlpAvailable, getYtDlpVersion, ensureYtDlpPath } from './services/youtube/ytdlp.service.js';
 import { checkKimiConnection } from './services/ai/kimi.service.js';
 import { checkFluxConnection } from './services/ai/flux.service.js';
+import { checkTtsConnection, listMagpieVoices } from './services/ai/tts.service.js';
 import type { Worker } from 'bullmq';
 
 let worker: Worker | undefined;
@@ -93,6 +94,30 @@ async function buildApp() {
     }
 
     return { ok: true, flux: result.message, model: 'flux.2-klein-4b' };
+  });
+
+  app.get('/health/tts', async (_req, reply) => {
+    const result = await checkTtsConnection();
+
+    if (!result.ok) {
+      return reply.status(503).send({ ok: false, tts: result.message, provider: result.provider });
+    }
+
+    return { ok: true, tts: result.message, provider: result.provider, voice: env.ttsVoice };
+  });
+
+  app.get('/health/tts/voices', async (_req, reply) => {
+    if (env.ttsProvider.toLowerCase() !== 'magpie') {
+      return reply.status(400).send({ error: 'Only available when TTS_PROVIDER=magpie' });
+    }
+
+    try {
+      const voices = await listMagpieVoices();
+      return { ok: true, voices };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to list voices';
+      return reply.status(503).send({ ok: false, error: message });
+    }
   });
 
   app.get('/health/moonshot', async (_req, reply) => {

@@ -58,6 +58,7 @@ export async function registerProjectRoutes(app: FastifyInstance): Promise<void>
     }
 
     const thumbnail = await resolveAssetUrl(project.thumbnail);
+    const narrationUrl = await resolveAssetUrl(project.narrationUrl);
     const scenes = await Promise.all(
       project.scenes.map(async (scene) => ({
         ...scene,
@@ -71,7 +72,7 @@ export async function registerProjectRoutes(app: FastifyInstance): Promise<void>
       title: project.title,
       thumbnail,
       videoUrl: project.videoUrl,
-      narrationUrl: project.narrationUrl,
+      narrationUrl,
       script: project.script,
       scenes,
       errorMessage: project.errorMessage,

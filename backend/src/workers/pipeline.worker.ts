@@ -4,6 +4,7 @@ import { VIDEO_QUEUE_NAME, type VideoJobData } from '../queues/video.queue.js';
 import { prisma } from '../db/client.js';
 import { runScriptStage } from '../services/pipeline/script-stage.service.js';
 import { runFluxStage } from '../services/pipeline/flux-stage.service.js';
+import { runTtsStage } from '../services/pipeline/tts-stage.service.js';
 
 async function processVideoJob(job: Job<VideoJobData>): Promise<void> {
   const { projectId } = job.data;
@@ -17,14 +18,18 @@ async function processVideoJob(job: Job<VideoJobData>): Promise<void> {
 
   const script = await runScriptStage(projectId);
 
-  await job.updateProgress(35);
+  await job.updateProgress(30);
 
   const assets = await runFluxStage(projectId);
+
+  await job.updateProgress(70);
+
+  const narration = await runTtsStage(projectId);
 
   await job.updateProgress(100);
 
   console.log(
-    `[worker] images ready for ${projectId}: "${script.title}" — thumbnail + ${assets.sceneKeys.length} scenes`,
+    `[worker] narration ready for ${projectId}: "${script.title}" — ${assets.sceneKeys.length} scenes, audio ${narration.narrationKey}`,
   );
 }
 

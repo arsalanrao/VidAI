@@ -673,13 +673,24 @@ backend/
 
 **Goal:** Turn `narration` text into `narration.wav`.
 
-**Options:** OpenAI `tts-1` or NVIDIA Magpie.
+**Options:** NVIDIA **Magpie multilingual** (NVCF HTTP) or OpenAI `tts-1`.
+
+**Render env for Magpie:**
+- `TTS_PROVIDER=magpie`
+- `TTS_VOICE=Magpie-Multilingual.EN-US.Aria`
+- `TTS_LANGUAGE=en-US`
+- `MAGPIE_FUNCTION_ID=877104f7-e885-42b9-8de8-f6e4c6303969`
+- `NVIDIA_API_KEY` or `MAGPIE_API_KEY` (same `nvapi-` key)
 
 **Your job:** Listen to the WAV file — clear voice?
 
-- [ ] Narration audio works
+- [x] Narration audio works (OpenAI TTS → R2 as narration.wav)
 
-**Tell Cursor:** *“Do Step 11 — tts.service.ts”*
+**Success status:** `narration_ready`. Result includes signed `narrationUrl` (play in browser).
+
+**Render env:** `OPENAI_API_KEY` + `TTS_PROVIDER=openai` (optional `TTS_VOICE=alloy`).
+
+**Tell Cursor:** *“Do Step 12 — dispatch to PC”* or *“Step 13 — ai-server on PC”*
 
 ---
 
@@ -908,8 +919,8 @@ Copy this to the top of your notes and update:
 
 ```
 Hosting path: Path B (Premium + Render + PC)
-Last completed step: Step 10 ✅ (FLUX images)
-Next step: Step 11 — TTS narration
+Last completed step: Step 11 ✅ (TTS narration)
+Next step: Step 13 — PC ai-server (SVD + FFmpeg)
 Blockers: none
 ```
 
