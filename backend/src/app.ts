@@ -7,6 +7,7 @@ import { videoQueue } from './queues/video.queue.js';
 import { startPipelineWorker } from './workers/pipeline.worker.js';
 import { checkR2Connection } from './services/storage/r2.service.js';
 import { isYtDlpAvailable, getYtDlpVersion, ensureYtDlpPath } from './services/youtube/ytdlp.service.js';
+import { checkKimiConnection } from './services/ai/kimi.service.js';
 import type { Worker } from 'bullmq';
 
 let worker: Worker | undefined;
@@ -70,6 +71,34 @@ async function buildApp() {
       ytdlp: await isYtDlpAvailable(),
       ytdlpPath,
       version,
+    };
+  });
+
+  app.get('/health/kimi', async (_req, reply) => {
+    const result = await checkKimiConnection();
+
+    if (!result.ok) {
+      return reply.status(503).send({ ok: false, kimi: result.message, provider: 'nvidia-build' });
+    }
+
+    return { ok: true, kimi: result.message, provider: 'nvidia-build', model: 'moonshotai/kimi-k2.6' };
+  });
+
+  app.get('/health/moonshot', async (_req, reply) => {
+    const result = await checkKimiConnection();
+
+    if (!result.ok) {
+      return reply.status(503).send({
+        ok: false,
+        deprecated: 'Use /health/kimi — Kimi now runs via NVIDIA Build',
+        kimi: result.message,
+      });
+    }
+
+    return {
+      ok: true,
+      deprecated: 'Use /health/kimi — Kimi now runs via NVIDIA Build',
+      kimi: result.message,
     };
   });
 

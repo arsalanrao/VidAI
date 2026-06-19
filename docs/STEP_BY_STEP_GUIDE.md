@@ -627,7 +627,7 @@ backend/
 
 **Goal:** AI writes NEW title, hook, narration, scenes, thumbnail idea.
 
-**Important:** API is `https://api.moonshot.ai/v1` — model `kimi-k2.6`.
+**Important:** Kimi K2.6 via **NVIDIA Build** — `https://integrate.api.nvidia.com/v1/chat/completions`, model `moonshotai/kimi-k2.6`, key `NVIDIA_API_KEY` (`nvapi-...`).
 
 **Output example:**
 ```json
@@ -873,7 +873,7 @@ Before real users:
 |---------|-------------|
 | “CUDA out of memory” on PC | Close games/browser; use smaller SVD settings; one scene at a time |
 | PC not reachable | Check Cloudflare tunnel is running; PC awake |
-| Kimi error | Check `MOONSHOT_API_KEY`; check account balance |
+| Kimi error | Check `NVIDIA_API_KEY` on Render (nvapi-... from build.nvidia.com) |
 | FLUX error | Check NVIDIA credits on build.nvidia.com |
 | Worker not running | On VPS: `pm2 list` — restart worker |
 | Video has no sound | Check narration URL passed to PC FFmpeg step |
@@ -917,7 +917,7 @@ Blockers: none
 
 | Service | Correct URL |
 |---------|-------------|
-| Kimi | `https://api.moonshot.ai/v1` |
+| Kimi K2.6 | `https://integrate.api.nvidia.com/v1/chat/completions` (model `moonshotai/kimi-k2.6`) |
 | NVIDIA Build | `https://integrate.api.nvidia.com/v1` (see NVIDIA docs) |
 | OpenAI TTS | `https://api.openai.com/v1/audio/speech` |
 | Your PC | `PC_SERVER_URL` from Cloudflare tunnel |
