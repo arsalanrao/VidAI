@@ -644,9 +644,11 @@ backend/
 
 **Your job:** Check output in database — does it read like a Short, not a copy?
 
-- [ ] Kimi script generation works
+- [x] Kimi script generation works (via pipeline worker)
 
-**Tell Cursor:** *“Do Step 9 — kimi.service.ts”*
+**Test:** POST `/api/project/create` with a YouTube Short URL → poll `/api/project/:id/status` until `script_ready` → GET `/api/project/:id/result` for script + scenes.
+
+**Tell Cursor:** *“Do Step 10 — FLUX image generation”*
 
 ---
 
@@ -904,8 +906,8 @@ Copy this to the top of your notes and update:
 
 ```
 Hosting path: Path B (Premium + Render + PC)
-Last completed step: Step 4 ✅ (R2 storage)
-Next step: Push to GitHub + add R2 vars to Render, then Step 6 (Kimi script service)
+Last completed step: Step 6/9 ✅ (YouTube extract + Kimi script service)
+Next step: Push to GitHub + redeploy Render, then test script generation (Step 10 FLUX)
 Blockers: none
 ```
 
