@@ -494,10 +494,12 @@ We will use Premium in **Step 18** for a simple homepage. Nothing to do now.
 
 **Cursor job:** Add upload/download helpers.
 
-- [ ] R2 bucket created
-- [ ] Storage code added
+- [x] R2 bucket created
+- [x] Storage code added
 
-**Tell Cursor:** *“Do Step 4 — R2 storage service”*
+**After deploy:** open `/health/r2` — should show `"ok": true`. Add the same R2 env vars to **Render → Environment** if not there yet.
+
+**Tell Cursor:** *“Do Step 5 — Kimi script service”* (or continue pipeline steps)
 
 ---
 
@@ -902,9 +904,9 @@ Copy this to the top of your notes and update:
 
 ```
 Hosting path: Path B (Premium + Render + PC)
-Last completed step: Step 3 in progress (backend scaffolded)
-Next step: npm install + test DB locally, then Render deploy (Step 5b)
-Blockers: add JWT_SECRET + PC_API_SECRET to .env if missing; sign up Render
+Last completed step: Step 4 ✅ (R2 storage)
+Next step: Push to GitHub + add R2 vars to Render, then Step 6 (Kimi script service)
+Blockers: none
 ```
 
 ---

@@ -7,7 +7,7 @@ services:
     region: oregon
     plan: free
     rootDir: backend
-    buildCommand: npm install && npx prisma generate && npm run build
+    buildCommand: npm install --include=dev && npx prisma generate && npm run build
     startCommand: npx prisma db push && npm start
     healthCheckPath: /health
     envVars:
@@ -34,4 +34,14 @@ services:
       - key: PC_SERVER_URL
         sync: false
       - key: PC_API_SECRET
+        sync: false
+      - key: R2_ACCOUNT_ID
+        sync: false
+      - key: R2_ACCESS_KEY_ID
+        sync: false
+      - key: R2_SECRET_ACCESS_KEY
+        sync: false
+      - key: R2_BUCKET
+        sync: false
+      - key: R2_PUBLIC_URL
         sync: false

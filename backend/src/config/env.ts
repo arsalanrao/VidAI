@@ -51,6 +51,17 @@ export const env = {
   pcServerUrl: optional('PC_SERVER_URL'),
   pcApiSecret: optional('PC_API_SECRET'),
   runWorker: optional('RUN_WORKER', 'true') === 'true',
+  r2AccountId: optional('R2_ACCOUNT_ID'),
+  r2AccessKeyId: optional('R2_ACCESS_KEY_ID'),
+  r2SecretAccessKey: optional('R2_SECRET_ACCESS_KEY'),
+  r2Bucket: optional('R2_BUCKET', 'vidaipro'),
+  r2PublicUrl: optional('R2_PUBLIC_URL'),
 } as const;
 
 export const isProd = env.nodeEnv === 'production';
+
+export const r2Configured =
+  Boolean(env.r2AccountId) &&
+  Boolean(env.r2AccessKeyId) &&
+  Boolean(env.r2SecretAccessKey) &&
+  Boolean(env.r2Bucket);

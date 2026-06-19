@@ -1,10 +1,11 @@
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
-import { env } from './config/env.js';
+import { env, r2Configured } from './config/env.js';
 import { prisma } from './db/client.js';
 import { registerProjectRoutes } from './api/routes/project.routes.js';
 import { videoQueue } from './queues/video.queue.js';
 import { startPipelineWorker } from './workers/pipeline.worker.js';
+import { checkR2Connection } from './services/storage/r2.service.js';
 import type { Worker } from 'bullmq';
 
 let worker: Worker | undefined;
@@ -37,6 +38,25 @@ async function buildApp() {
     } catch (err) {
       app.log.error(err);
       return reply.status(503).send({ ok: false, redis: 'disconnected' });
+    }
+  });
+
+  app.get('/health/r2', async (_req, reply) => {
+    if (!r2Configured) {
+      return reply.status(503).send({ ok: false, r2: 'not_configured' });
+    }
+
+    try {
+      await checkR2Connection();
+      return {
+        ok: true,
+        r2: 'connected',
+        bucket: env.r2Bucket,
+        publicUrl: env.r2PublicUrl || null,
+      };
+    } catch (err) {
+      app.log.error(err);
+      return reply.status(503).send({ ok: false, r2: 'disconnected' });
     }
   });
 
