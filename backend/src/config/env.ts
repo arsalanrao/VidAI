@@ -61,7 +61,7 @@ export const env = {
   ttsProvider: optional('TTS_PROVIDER', 'magpie'),
   ttsVoice: optional('TTS_VOICE', 'Magpie-Multilingual.EN-US.Aria'),
   ttsLanguage: optional('TTS_LANGUAGE', 'en-US'),
-  ttsFallback: optional('TTS_FALLBACK', 'chatterbox'),
+  ttsFallback: optional('TTS_FALLBACK', 'magpie-grpc'),
   ttsSampleRateHz: Number(optional('TTS_SAMPLE_RATE_HZ', '22050')),
   magpieFunctionId: optional('MAGPIE_FUNCTION_ID', '877104f7-e885-42b9-8de8-f6e4c6303969'),
   chatterboxFunctionId: optional('CHATTERBOX_FUNCTION_ID', 'ddacc747-1269-4fab-bfd9-8f593dead106'),

@@ -9,7 +9,7 @@ import { checkR2Connection } from './services/storage/r2.service.js';
 import { isYtDlpAvailable, getYtDlpVersion, ensureYtDlpPath } from './services/youtube/ytdlp.service.js';
 import { checkKimiConnection } from './services/ai/kimi.service.js';
 import { checkFluxConnection } from './services/ai/flux.service.js';
-import { checkTtsConnection, listChatterboxVoices, listMagpieVoices } from './services/ai/tts.service.js';
+import { checkTtsConnection, listChatterboxVoices, listMagpieGrpcVoices, listMagpieVoices } from './services/ai/tts.service.js';
 import type { Worker } from 'bullmq';
 
 let worker: Worker | undefined;
@@ -117,6 +117,11 @@ async function buildApp() {
     const provider = String((req.query as { provider?: string }).provider ?? env.ttsProvider).toLowerCase();
 
     try {
+      if (provider === 'magpie-grpc') {
+        const voices = await listMagpieGrpcVoices();
+        return { ok: true, provider: 'magpie-grpc', voices };
+      }
+
       if (provider === 'chatterbox') {
         const voices = await listChatterboxVoices();
         return { ok: true, provider: 'chatterbox', voices };
@@ -127,7 +132,7 @@ async function buildApp() {
         return { ok: true, provider: 'magpie', voices };
       }
 
-      return reply.status(400).send({ error: 'Use ?provider=magpie or ?provider=chatterbox' });
+      return reply.status(400).send({ error: 'Use ?provider=magpie, ?provider=magpie-grpc, or ?provider=chatterbox' });
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to list voices';
       return reply.status(503).send({ ok: false, provider, error: message });

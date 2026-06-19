@@ -673,18 +673,17 @@ backend/
 
 **Goal:** Turn `narration` text into `narration.wav`.
 
-**Options:** NVIDIA **Magpie multilingual** (NVCF HTTP, primary) with **Chatterbox multilingual** (Riva gRPC fallback), or OpenAI `tts-1`.
+**Options:** NVIDIA **Magpie multilingual** (primary) + **Chatterbox multilingual** (fallback). Full key/model reference: **[docs/TTS_MODELS.md](./TTS_MODELS.md)**.
 
 **Render env for Magpie + Chatterbox fallback:**
 - `TTS_PROVIDER=magpie`
 - `TTS_VOICE=Magpie-Multilingual.EN-US.Aria`
 - `TTS_LANGUAGE=en-US`
-- `TTS_FALLBACK=chatterbox`
-- `MAGPIE_FUNCTION_ID=877104f7-e885-42b9-8de8-f6e4c6303969`
+- `TTS_FALLBACK=chatterbox` (or `magpie-grpc`)
+- `NVIDIA_API_KEY` — Magpie, FLUX, Kimi (`nvapi-...`)
+- `OPENAI_API_KEY` — **Chatterbox only** ([model page](https://build.nvidia.com/resembleai/chatterbox-multilingual-tts/api))
 - `CHATTERBOX_FUNCTION_ID=ddacc747-1269-4fab-bfd9-8f593dead106`
 - `CHATTERBOX_VOICE=Chatterbox-Multilingual.en-US.Male`
-- `CHATTERBOX_GRPC_HOST=grpc.nvcf.nvidia.com:443`
-- `NVIDIA_API_KEY` (same `nvapi-` key for Magpie, Chatterbox, FLUX, Kimi)
 
 **Health checks:**
 - `/health/tts` — primary provider status (+ fallback if configured)

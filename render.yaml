@@ -42,7 +42,7 @@ services:
       - key: MAGPIE_API_KEY
         sync: false
       - key: TTS_FALLBACK
-        value: chatterbox
+        value: magpie-grpc
       - key: TTS_SAMPLE_RATE_HZ
         value: "22050"
       - key: CHATTERBOX_FUNCTION_ID
@@ -51,8 +51,6 @@ services:
         value: Chatterbox-Multilingual.en-US.Male
       - key: CHATTERBOX_GRPC_HOST
         value: grpc.nvcf.nvidia.com:443
-      - key: CHATTERBOX_API_KEY
-        sync: false
       - key: PC_SERVER_URL
         sync: false
       - key: PC_API_SECRET

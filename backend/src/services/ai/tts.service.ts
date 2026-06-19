@@ -1,11 +1,19 @@
 import { env } from '../../config/env.js';
-import { chatterboxTts, checkChatterboxConnection, listChatterboxVoices } from './chatterbox-tts.service.js';
+import {
+  chatterboxTts,
+  checkChatterboxConnection,
+  checkMagpieGrpcConnection,
+  isChatterboxEnabled,
+  listChatterboxVoices,
+  listMagpieGrpcVoices,
+  magpieGrpcTts,
+} from './chatterbox-tts.service.js';
 
 const OPENAI_TTS_URL = 'https://api.openai.com/v1/audio/speech';
 const DEFAULT_MAGPIE_FUNCTION_ID = '877104f7-e885-42b9-8de8-f6e4c6303969';
 
 export type TtsProvider = 'magpie' | 'chatterbox' | 'openai';
-export type TtsFallback = 'chatterbox' | 'openai' | 'none';
+export type TtsFallback = 'magpie-grpc' | 'chatterbox' | 'openai' | 'none';
 
 function getProvider(): TtsProvider {
   const value = env.ttsProvider.toLowerCase();
@@ -20,11 +28,11 @@ function getProvider(): TtsProvider {
 function getFallback(): TtsFallback {
   const value = env.ttsFallback.toLowerCase();
 
-  if (value === 'chatterbox' || value === 'openai' || value === 'none') {
+  if (value === 'magpie-grpc' || value === 'chatterbox' || value === 'openai' || value === 'none') {
     return value;
   }
 
-  return 'chatterbox';
+  return 'magpie-grpc';
 }
 
 function getMagpieApiKey(): string {
@@ -107,7 +115,7 @@ async function openaiTts(text: string): Promise<Buffer> {
 
 async function synthesizeWithFallback(text: string, primary: TtsProvider): Promise<Buffer> {
   const fallback = getFallback();
-  const attempts: Array<{ provider: TtsProvider; run: () => Promise<Buffer> }> = [];
+  const attempts: Array<{ provider: string; run: () => Promise<Buffer> }> = [];
 
   if (primary === 'magpie') {
     attempts.push({ provider: 'magpie', run: () => magpieTts(text) });
@@ -117,7 +125,11 @@ async function synthesizeWithFallback(text: string, primary: TtsProvider): Promi
     attempts.push({ provider: 'openai', run: () => openaiTts(text) });
   }
 
-  if (primary !== 'chatterbox' && fallback === 'chatterbox') {
+  if (fallback === 'magpie-grpc') {
+    attempts.push({ provider: 'magpie-grpc', run: () => magpieGrpcTts(text) });
+  }
+
+  if (primary !== 'chatterbox' && fallback === 'chatterbox' && isChatterboxEnabled()) {
     attempts.push({ provider: 'chatterbox', run: () => chatterboxTts(text) });
   }
 
@@ -166,7 +178,7 @@ export async function listMagpieVoices(): Promise<unknown> {
   }
 }
 
-export { listChatterboxVoices };
+export { listChatterboxVoices, listMagpieGrpcVoices };
 
 export async function generateNarrationAudio(text: string): Promise<Buffer> {
   const provider = getProvider();
@@ -178,6 +190,7 @@ export async function checkTtsConnection(): Promise<{
   message: string;
   provider: string;
   fallback?: string;
+  chatterboxEnabled?: boolean;
 }> {
   try {
     const provider = getProvider();
@@ -194,12 +207,13 @@ export async function checkTtsConnection(): Promise<{
         message: 'Magpie multilingual TTS connected',
         provider,
         fallback: fallback === 'none' ? undefined : fallback,
+        chatterboxEnabled: isChatterboxEnabled(),
       };
     }
 
     if (provider === 'chatterbox') {
       const result = await checkChatterboxConnection();
-      return { ok: result.ok, message: result.message, provider, fallback };
+      return { ok: result.ok, message: result.message, provider, fallback, chatterboxEnabled: isChatterboxEnabled() };
     }
 
     if (!env.openaiApiKey) {
@@ -211,14 +225,15 @@ export async function checkTtsConnection(): Promise<{
     const provider = getProvider();
     const fallback = getFallback();
 
-    if (provider === 'magpie' && fallback === 'chatterbox') {
-      const chatterbox = await checkChatterboxConnection();
-      if (chatterbox.ok) {
+    if (provider === 'magpie' && fallback === 'magpie-grpc') {
+      const magpieGrpc = await checkMagpieGrpcConnection();
+      if (magpieGrpc.ok) {
         return {
           ok: true,
-          message: `Magpie unavailable; Chatterbox fallback ready (${chatterbox.message})`,
+          message: `Magpie HTTP unavailable; Magpie gRPC fallback ready (${magpieGrpc.message})`,
           provider,
           fallback,
+          chatterboxEnabled: isChatterboxEnabled(),
         };
       }
     }
