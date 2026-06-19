@@ -1,10 +1,19 @@
 import { execFile } from 'node:child_process';
-import { promisify } from 'node:util';
 import { existsSync } from 'node:fs';
+import { chmod, mkdir, readdir, readFile, unlink, writeFile } from 'node:fs/promises';
+import { promisify } from 'node:util';
 import { resolve } from 'node:path';
 import { env } from '../../config/env.js';
 
 const execFileAsync = promisify(execFile);
+
+const YTDLP_DOWNLOAD_URL = 'https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp';
+
+const YTDLP_BASE_ARGS = [
+  '--no-playlist',
+  '--extractor-args',
+  'youtube:player_client=android,web',
+];
 
 type YtDlpCaptionTrack = {
   ext?: string;
@@ -19,24 +28,75 @@ type YtDlpJson = {
 };
 
 export type YtDlpExtractResult =
-  | { ok: true; title: string; transcript: string; source: 'captions' | 'description' }
+  | { ok: true; title: string; transcript: string; source: 'captions' | 'description' | 'title' }
   | { ok: false; reason: string };
 
-function resolveYtDlpPath(): string | null {
-  const candidates = [
-    env.ytdlpPath,
-    resolve(process.cwd(), 'bin', 'yt-dlp'),
-    resolve(process.cwd(), 'bin', 'yt-dlp.exe'),
-    'yt-dlp',
-  ].filter(Boolean);
+let cachedYtDlpPath: string | null | undefined;
+
+function defaultBinPath(): string {
+  return resolve(process.cwd(), 'bin', 'yt-dlp');
+}
+
+function toAbsolutePath(candidate: string): string {
+  return resolve(process.cwd(), candidate);
+}
+
+async function downloadYtDlp(targetPath: string): Promise<boolean> {
+  try {
+    const response = await fetch(YTDLP_DOWNLOAD_URL);
+
+    if (!response.ok) {
+      return false;
+    }
+
+    await mkdir(resolve(targetPath, '..'), { recursive: true });
+    await writeFile(targetPath, Buffer.from(await response.arrayBuffer()));
+    await chmod(targetPath, 0o755);
+    return existsSync(targetPath);
+  } catch {
+    return false;
+  }
+}
+
+export async function ensureYtDlpPath(): Promise<string | null> {
+  if (cachedYtDlpPath !== undefined) {
+    return cachedYtDlpPath;
+  }
+
+  const candidates = [env.ytdlpPath, defaultBinPath()].filter(Boolean);
 
   for (const candidate of candidates) {
-    if (candidate === 'yt-dlp' || existsSync(candidate)) {
-      return candidate;
+    if (!candidate) {
+      continue;
+    }
+
+    const absolutePath = toAbsolutePath(candidate);
+    if (existsSync(absolutePath)) {
+      cachedYtDlpPath = absolutePath;
+      return absolutePath;
     }
   }
 
-  return null;
+  const targetPath = defaultBinPath();
+  const downloaded = await downloadYtDlp(targetPath);
+
+  cachedYtDlpPath = downloaded ? targetPath : null;
+  return cachedYtDlpPath;
+}
+
+export async function getYtDlpVersion(): Promise<string | null> {
+  const ytdlp = await ensureYtDlpPath();
+
+  if (!ytdlp) {
+    return null;
+  }
+
+  try {
+    const { stdout } = await execFileAsync(ytdlp, ['--version'], { timeout: 15_000 });
+    return stdout.trim().split('\n')[0] ?? null;
+  } catch {
+    return null;
+  }
 }
 
 function parseVtt(vtt: string): string {
@@ -115,7 +175,12 @@ async function fetchCaptionText(tracks: YtDlpCaptionTrack[] | undefined): Promis
     return null;
   }
 
-  const response = await fetch(track.url);
+  const response = await fetch(track.url, {
+    headers: {
+      'User-Agent':
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+    },
+  });
 
   if (!response.ok) {
     return null;
@@ -156,20 +221,70 @@ async function collectCaptionText(data: YtDlpJson): Promise<string> {
   return '';
 }
 
-export async function extractViaYtDlp(youtubeUrl: string): Promise<YtDlpExtractResult> {
-  const ytdlp = resolveYtDlpPath();
+async function fetchSubsToDisk(ytdlp: string, youtubeUrl: string, videoId: string): Promise<string | null> {
+  const outBase = resolve('/tmp', `vidaipro-${videoId}`);
+
+  try {
+    await execFileAsync(
+      ytdlp,
+      [
+        ...YTDLP_BASE_ARGS,
+        '--skip-download',
+        '--write-auto-subs',
+        '--write-subs',
+        '--sub-langs',
+        'en,en-US,en-GB',
+        '--sub-format',
+        'vtt',
+        '--output',
+        outBase,
+        youtubeUrl,
+      ],
+      { timeout: 120_000 },
+    );
+  } catch {
+    // yt-dlp may exit non-zero even when subs were written.
+  }
+
+  try {
+    const files = await readdir('/tmp');
+    const vttFile = files.find((file) => file.startsWith(`vidaipro-${videoId}`) && file.endsWith('.vtt'));
+
+    if (!vttFile) {
+      return null;
+    }
+
+    const fullPath = resolve('/tmp', vttFile);
+    const text = parseVtt(await readFile(fullPath, 'utf8'));
+    await unlink(fullPath).catch(() => undefined);
+    return text.length >= 20 ? text : null;
+  } catch {
+    return null;
+  }
+}
+
+function buildTitleFallback(title: string, description: string): string {
+  if (description.length >= 20) {
+    return description;
+  }
+
+  return `Create a viral YouTube Short inspired by this topic.\nVideo title: ${title}`;
+}
+
+export async function extractViaYtDlp(youtubeUrl: string, videoId: string): Promise<YtDlpExtractResult> {
+  const ytdlp = await ensureYtDlpPath();
 
   if (!ytdlp) {
     return {
       ok: false,
-      reason: 'yt-dlp not installed on server (update Render Build Command to download bin/yt-dlp)',
+      reason: 'yt-dlp could not be downloaded on the server',
     };
   }
 
   try {
     const { stdout } = await execFileAsync(
       ytdlp,
-      ['-j', '--skip-download', '--no-playlist', youtubeUrl],
+      ['-j', '--skip-download', ...YTDLP_BASE_ARGS, youtubeUrl],
       {
         maxBuffer: 10 * 1024 * 1024,
         timeout: 120_000,
@@ -178,19 +293,23 @@ export async function extractViaYtDlp(youtubeUrl: string): Promise<YtDlpExtractR
 
     const data = JSON.parse(stdout) as YtDlpJson;
     const title = data.title?.trim() || 'Untitled YouTube video';
+    const description = (data.description ?? '').trim();
+
     let transcript = await collectCaptionText(data);
-    let source: 'captions' | 'description' = 'captions';
+    let source: 'captions' | 'description' | 'title' = 'captions';
 
     if (transcript.length < 20) {
-      transcript = (data.description ?? '').trim();
+      transcript = (await fetchSubsToDisk(ytdlp, youtubeUrl, videoId)) ?? '';
+    }
+
+    if (transcript.length < 20 && description.length >= 20) {
+      transcript = description;
       source = 'description';
     }
 
     if (transcript.length < 20) {
-      return {
-        ok: false,
-        reason: 'yt-dlp ran but found no captions or description for this video',
-      };
+      transcript = buildTitleFallback(title, description);
+      source = 'title';
     }
 
     return { ok: true, title, transcript, source };
@@ -200,6 +319,6 @@ export async function extractViaYtDlp(youtubeUrl: string): Promise<YtDlpExtractR
   }
 }
 
-export function isYtDlpAvailable(): boolean {
-  return resolveYtDlpPath() !== null;
+export async function isYtDlpAvailable(): Promise<boolean> {
+  return (await getYtDlpVersion()) !== null;
 }

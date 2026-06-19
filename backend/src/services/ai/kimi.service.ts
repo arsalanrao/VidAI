@@ -38,6 +38,16 @@ function buildUserPrompt(source: YouTubeSource): string {
       ? `${source.transcript.slice(0, 12_000)}…`
       : source.transcript;
 
+  const sparseSource = trimmedTranscript.startsWith('Create a viral YouTube Short inspired');
+
+  if (sparseSource) {
+    return `Create a brand-new viral YouTube Shorts package from this topic (no transcript was available):
+
+SOURCE TITLE: ${source.title}
+
+Return JSON only. Invent a compelling hook, narration, and scenes based on the title/topic.`;
+  }
+
   return `Rewrite this viral YouTube Short into a fresh original Shorts package.
 
 SOURCE TITLE: ${source.title}
