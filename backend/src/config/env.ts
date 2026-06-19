@@ -48,6 +48,7 @@ export const env = {
   moonshotApiKey: optional('MOONSHOT_API_KEY'),
   openaiApiKey: optional('OPENAI_API_KEY'),
   magpieApiKey: optional('MAGPIE_API_KEY'),
+  chatterboxApiKey: optional('CHATTERBOX_API_KEY'),
   pcServerUrl: optional('PC_SERVER_URL'),
   pcApiSecret: optional('PC_API_SECRET'),
   runWorker: optional('RUN_WORKER', 'true') === 'true',
@@ -60,7 +61,12 @@ export const env = {
   ttsProvider: optional('TTS_PROVIDER', 'magpie'),
   ttsVoice: optional('TTS_VOICE', 'Magpie-Multilingual.EN-US.Aria'),
   ttsLanguage: optional('TTS_LANGUAGE', 'en-US'),
+  ttsFallback: optional('TTS_FALLBACK', 'chatterbox'),
+  ttsSampleRateHz: Number(optional('TTS_SAMPLE_RATE_HZ', '22050')),
   magpieFunctionId: optional('MAGPIE_FUNCTION_ID', '877104f7-e885-42b9-8de8-f6e4c6303969'),
+  chatterboxFunctionId: optional('CHATTERBOX_FUNCTION_ID', 'ddacc747-1269-4fab-bfd9-8f593dead106'),
+  chatterboxVoice: optional('CHATTERBOX_VOICE', 'Chatterbox-Multilingual.en-US.Male'),
+  chatterboxGrpcHost: optional('CHATTERBOX_GRPC_HOST', 'grpc.nvcf.nvidia.com:443'),
 } as const;
 
 export const isProd = env.nodeEnv === 'production';

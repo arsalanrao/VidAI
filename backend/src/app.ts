@@ -9,7 +9,7 @@ import { checkR2Connection } from './services/storage/r2.service.js';
 import { isYtDlpAvailable, getYtDlpVersion, ensureYtDlpPath } from './services/youtube/ytdlp.service.js';
 import { checkKimiConnection } from './services/ai/kimi.service.js';
 import { checkFluxConnection } from './services/ai/flux.service.js';
-import { checkTtsConnection, listMagpieVoices } from './services/ai/tts.service.js';
+import { checkTtsConnection, listChatterboxVoices, listMagpieVoices } from './services/ai/tts.service.js';
 import type { Worker } from 'bullmq';
 
 let worker: Worker | undefined;
@@ -103,20 +103,34 @@ async function buildApp() {
       return reply.status(503).send({ ok: false, tts: result.message, provider: result.provider });
     }
 
-    return { ok: true, tts: result.message, provider: result.provider, voice: env.ttsVoice };
+    return {
+      ok: true,
+      tts: result.message,
+      provider: result.provider,
+      fallback: result.fallback,
+      voice: env.ttsVoice,
+      chatterboxVoice: env.chatterboxVoice,
+    };
   });
 
-  app.get('/health/tts/voices', async (_req, reply) => {
-    if (env.ttsProvider.toLowerCase() !== 'magpie') {
-      return reply.status(400).send({ error: 'Only available when TTS_PROVIDER=magpie' });
-    }
+  app.get('/health/tts/voices', async (req, reply) => {
+    const provider = String((req.query as { provider?: string }).provider ?? env.ttsProvider).toLowerCase();
 
     try {
-      const voices = await listMagpieVoices();
-      return { ok: true, voices };
+      if (provider === 'chatterbox') {
+        const voices = await listChatterboxVoices();
+        return { ok: true, provider: 'chatterbox', voices };
+      }
+
+      if (provider === 'magpie') {
+        const voices = await listMagpieVoices();
+        return { ok: true, provider: 'magpie', voices };
+      }
+
+      return reply.status(400).send({ error: 'Use ?provider=magpie or ?provider=chatterbox' });
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to list voices';
-      return reply.status(503).send({ ok: false, error: message });
+      return reply.status(503).send({ ok: false, provider, error: message });
     }
   });
 

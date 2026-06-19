@@ -1,18 +1,30 @@
 import { env } from '../../config/env.js';
+import { chatterboxTts, checkChatterboxConnection, listChatterboxVoices } from './chatterbox-tts.service.js';
 
 const OPENAI_TTS_URL = 'https://api.openai.com/v1/audio/speech';
 const DEFAULT_MAGPIE_FUNCTION_ID = '877104f7-e885-42b9-8de8-f6e4c6303969';
 
-export type TtsProvider = 'magpie' | 'openai';
+export type TtsProvider = 'magpie' | 'chatterbox' | 'openai';
+export type TtsFallback = 'chatterbox' | 'openai' | 'none';
 
 function getProvider(): TtsProvider {
   const value = env.ttsProvider.toLowerCase();
 
-  if (value === 'magpie' || value === 'openai') {
+  if (value === 'magpie' || value === 'chatterbox' || value === 'openai') {
     return value;
   }
 
-  throw new Error(`Unsupported TTS_PROVIDER "${env.ttsProvider}". Use "magpie" or "openai".`);
+  throw new Error(`Unsupported TTS_PROVIDER "${env.ttsProvider}". Use "magpie", "chatterbox", or "openai".`);
+}
+
+function getFallback(): TtsFallback {
+  const value = env.ttsFallback.toLowerCase();
+
+  if (value === 'chatterbox' || value === 'openai' || value === 'none') {
+    return value;
+  }
+
+  return 'chatterbox';
 }
 
 function getMagpieApiKey(): string {
@@ -24,6 +36,16 @@ function getMagpieBaseUrl(): string {
   return `https://${functionId}.invocation.api.nvcf.nvidia.com`;
 }
 
+function normalizeInput(text: string): string {
+  const input = text.trim().slice(0, 4000);
+
+  if (input.length < 3) {
+    throw new Error('Narration text is too short for TTS');
+  }
+
+  return input;
+}
+
 async function magpieTts(text: string): Promise<Buffer> {
   const apiKey = getMagpieApiKey();
 
@@ -31,12 +53,7 @@ async function magpieTts(text: string): Promise<Buffer> {
     throw new Error('MAGPIE_API_KEY or NVIDIA_API_KEY required for Magpie TTS');
   }
 
-  const input = text.trim().slice(0, 4000);
-
-  if (input.length < 3) {
-    throw new Error('Narration text is too short for TTS');
-  }
-
+  const input = normalizeInput(text);
   const form = new FormData();
   form.append('language', env.ttsLanguage);
   form.append('text', input);
@@ -64,11 +81,7 @@ async function openaiTts(text: string): Promise<Buffer> {
     throw new Error('OPENAI_API_KEY not configured (required for OpenAI TTS)');
   }
 
-  const input = text.trim().slice(0, 4096);
-
-  if (input.length < 3) {
-    throw new Error('Narration text is too short for TTS');
-  }
+  const input = normalizeInput(text).slice(0, 4096);
 
   const response = await fetch(OPENAI_TTS_URL, {
     method: 'POST',
@@ -90,6 +103,40 @@ async function openaiTts(text: string): Promise<Buffer> {
   }
 
   return Buffer.from(await response.arrayBuffer());
+}
+
+async function synthesizeWithFallback(text: string, primary: TtsProvider): Promise<Buffer> {
+  const fallback = getFallback();
+  const attempts: Array<{ provider: TtsProvider; run: () => Promise<Buffer> }> = [];
+
+  if (primary === 'magpie') {
+    attempts.push({ provider: 'magpie', run: () => magpieTts(text) });
+  } else if (primary === 'chatterbox') {
+    attempts.push({ provider: 'chatterbox', run: () => chatterboxTts(text) });
+  } else {
+    attempts.push({ provider: 'openai', run: () => openaiTts(text) });
+  }
+
+  if (primary !== 'chatterbox' && fallback === 'chatterbox') {
+    attempts.push({ provider: 'chatterbox', run: () => chatterboxTts(text) });
+  }
+
+  if (primary !== 'openai' && fallback === 'openai') {
+    attempts.push({ provider: 'openai', run: () => openaiTts(text) });
+  }
+
+  const errors: string[] = [];
+
+  for (const attempt of attempts) {
+    try {
+      return await attempt.run();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      errors.push(`${attempt.provider}: ${message}`);
+    }
+  }
+
+  throw new Error(errors.join(' | '));
 }
 
 export async function listMagpieVoices(): Promise<unknown> {
@@ -119,36 +166,64 @@ export async function listMagpieVoices(): Promise<unknown> {
   }
 }
 
+export { listChatterboxVoices };
+
 export async function generateNarrationAudio(text: string): Promise<Buffer> {
   const provider = getProvider();
-
-  if (provider === 'magpie') {
-    return magpieTts(text);
-  }
-
-  return openaiTts(text);
+  return synthesizeWithFallback(text, provider);
 }
 
-export async function checkTtsConnection(): Promise<{ ok: boolean; message: string; provider: string }> {
+export async function checkTtsConnection(): Promise<{
+  ok: boolean;
+  message: string;
+  provider: string;
+  fallback?: string;
+}> {
   try {
     const provider = getProvider();
+    const fallback = getFallback();
 
     if (provider === 'magpie') {
       if (!getMagpieApiKey()) {
-        return { ok: false, message: 'MAGPIE_API_KEY or NVIDIA_API_KEY not set', provider };
+        return { ok: false, message: 'MAGPIE_API_KEY or NVIDIA_API_KEY not set', provider, fallback };
       }
 
       await listMagpieVoices();
-      return { ok: true, message: 'Magpie multilingual TTS connected', provider };
+      return {
+        ok: true,
+        message: 'Magpie multilingual TTS connected',
+        provider,
+        fallback: fallback === 'none' ? undefined : fallback,
+      };
+    }
+
+    if (provider === 'chatterbox') {
+      const result = await checkChatterboxConnection();
+      return { ok: result.ok, message: result.message, provider, fallback };
     }
 
     if (!env.openaiApiKey) {
-      return { ok: false, message: 'OPENAI_API_KEY not set on server', provider };
+      return { ok: false, message: 'OPENAI_API_KEY not set on server', provider, fallback };
     }
 
-    return { ok: true, message: 'OpenAI TTS configured', provider };
+    return { ok: true, message: 'OpenAI TTS configured', provider, fallback };
   } catch (err) {
+    const provider = getProvider();
+    const fallback = getFallback();
+
+    if (provider === 'magpie' && fallback === 'chatterbox') {
+      const chatterbox = await checkChatterboxConnection();
+      if (chatterbox.ok) {
+        return {
+          ok: true,
+          message: `Magpie unavailable; Chatterbox fallback ready (${chatterbox.message})`,
+          provider,
+          fallback,
+        };
+      }
+    }
+
     const message = err instanceof Error ? err.message : 'TTS check failed';
-    return { ok: false, message, provider: env.ttsProvider };
+    return { ok: false, message, provider: env.ttsProvider, fallback };
   }
 }

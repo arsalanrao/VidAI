@@ -673,18 +673,27 @@ backend/
 
 **Goal:** Turn `narration` text into `narration.wav`.
 
-**Options:** NVIDIA **Magpie multilingual** (NVCF HTTP) or OpenAI `tts-1`.
+**Options:** NVIDIA **Magpie multilingual** (NVCF HTTP, primary) with **Chatterbox multilingual** (Riva gRPC fallback), or OpenAI `tts-1`.
 
-**Render env for Magpie:**
+**Render env for Magpie + Chatterbox fallback:**
 - `TTS_PROVIDER=magpie`
 - `TTS_VOICE=Magpie-Multilingual.EN-US.Aria`
 - `TTS_LANGUAGE=en-US`
+- `TTS_FALLBACK=chatterbox`
 - `MAGPIE_FUNCTION_ID=877104f7-e885-42b9-8de8-f6e4c6303969`
-- `NVIDIA_API_KEY` or `MAGPIE_API_KEY` (same `nvapi-` key)
+- `CHATTERBOX_FUNCTION_ID=ddacc747-1269-4fab-bfd9-8f593dead106`
+- `CHATTERBOX_VOICE=Chatterbox-Multilingual.en-US.Male`
+- `CHATTERBOX_GRPC_HOST=grpc.nvcf.nvidia.com:443`
+- `NVIDIA_API_KEY` (same `nvapi-` key for Magpie, Chatterbox, FLUX, Kimi)
+
+**Health checks:**
+- `/health/tts` — primary provider status (+ fallback if configured)
+- `/health/tts/voices?provider=magpie` — Magpie voices (HTTP)
+- `/health/tts/voices?provider=chatterbox` — Chatterbox voices (gRPC)
 
 **Your job:** Listen to the WAV file — clear voice?
 
-- [x] Narration audio works (OpenAI TTS → R2 as narration.wav)
+- [ ] Narration audio works (Magpie or Chatterbox fallback → R2 as narration.wav)
 
 **Success status:** `narration_ready`. Result includes signed `narrationUrl` (play in browser).
 
