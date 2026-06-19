@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { prisma } from '../../db/client.js';
 import { videoQueue } from '../../queues/video.queue.js';
+import { resolveAssetUrl } from '../../services/pipeline/flux-stage.service.js';
 
 export async function registerProjectRoutes(app: FastifyInstance): Promise<void> {
   app.post<{ Body: { youtubeUrl?: string } }>('/api/project/create', async (request, reply) => {
@@ -56,15 +57,23 @@ export async function registerProjectRoutes(app: FastifyInstance): Promise<void>
       return reply.status(404).send({ error: 'Project not found' });
     }
 
+    const thumbnail = await resolveAssetUrl(project.thumbnail);
+    const scenes = await Promise.all(
+      project.scenes.map(async (scene) => ({
+        ...scene,
+        imageUrl: await resolveAssetUrl(scene.imageUrl),
+      })),
+    );
+
     return reply.send({
       id: project.id,
       status: project.status,
       title: project.title,
-      thumbnail: project.thumbnail,
+      thumbnail,
       videoUrl: project.videoUrl,
       narrationUrl: project.narrationUrl,
       script: project.script,
-      scenes: project.scenes,
+      scenes,
       errorMessage: project.errorMessage,
     });
   });

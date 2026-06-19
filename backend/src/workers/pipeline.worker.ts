@@ -3,6 +3,7 @@ import { redisConnection } from '../queues/redis.js';
 import { VIDEO_QUEUE_NAME, type VideoJobData } from '../queues/video.queue.js';
 import { prisma } from '../db/client.js';
 import { runScriptStage } from '../services/pipeline/script-stage.service.js';
+import { runFluxStage } from '../services/pipeline/flux-stage.service.js';
 
 async function processVideoJob(job: Job<VideoJobData>): Promise<void> {
   const { projectId } = job.data;
@@ -12,13 +13,19 @@ async function processVideoJob(job: Job<VideoJobData>): Promise<void> {
     data: { status: 'processing', errorMessage: null },
   });
 
-  await job.updateProgress(10);
+  await job.updateProgress(5);
 
   const script = await runScriptStage(projectId);
 
+  await job.updateProgress(35);
+
+  const assets = await runFluxStage(projectId);
+
   await job.updateProgress(100);
 
-  console.log(`[worker] script ready for ${projectId}: "${script.title}" (${script.scenes.length} scenes)`);
+  console.log(
+    `[worker] images ready for ${projectId}: "${script.title}" — thumbnail + ${assets.sceneKeys.length} scenes`,
+  );
 }
 
 export function startPipelineWorker(): Worker<VideoJobData> {

@@ -660,10 +660,12 @@ backend/
 
 **Your job:** Look at images in R2 or URLs — are they vertical (tall) for Shorts?
 
-- [ ] Thumbnail generated
-- [ ] Scene images generated
+- [x] Thumbnail generated
+- [x] Scene images generated
 
-**Tell Cursor:** *“Do Step 10 — flux.service.ts”*
+**Success status:** `images_ready` (after script + FLUX). Poll `/api/project/:id/result` for signed image URLs.
+
+**Tell Cursor:** *“Do Step 11 — TTS narration”*
 
 ---
 
@@ -906,8 +908,8 @@ Copy this to the top of your notes and update:
 
 ```
 Hosting path: Path B (Premium + Render + PC)
-Last completed step: Step 6/9 ✅ (YouTube extract + Kimi script service)
-Next step: Push to GitHub + redeploy Render, then test script generation (Step 10 FLUX)
+Last completed step: Step 10 ✅ (FLUX images)
+Next step: Step 11 — TTS narration
 Blockers: none
 ```
 

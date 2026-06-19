@@ -8,6 +8,7 @@ import { startPipelineWorker } from './workers/pipeline.worker.js';
 import { checkR2Connection } from './services/storage/r2.service.js';
 import { isYtDlpAvailable, getYtDlpVersion, ensureYtDlpPath } from './services/youtube/ytdlp.service.js';
 import { checkKimiConnection } from './services/ai/kimi.service.js';
+import { checkFluxConnection } from './services/ai/flux.service.js';
 import type { Worker } from 'bullmq';
 
 let worker: Worker | undefined;
@@ -82,6 +83,16 @@ async function buildApp() {
     }
 
     return { ok: true, kimi: result.message, provider: 'nvidia-build', model: 'moonshotai/kimi-k2.6' };
+  });
+
+  app.get('/health/flux', async (_req, reply) => {
+    const result = await checkFluxConnection();
+
+    if (!result.ok) {
+      return reply.status(503).send({ ok: false, flux: result.message, model: 'flux.2-klein-4b' });
+    }
+
+    return { ok: true, flux: result.message, model: 'flux.2-klein-4b' };
   });
 
   app.get('/health/moonshot', async (_req, reply) => {
