@@ -44,6 +44,7 @@ VidAiPro-SECRETS.txt
 #
 node_modules/
 backend/dist/
+backend/bin/
 npm-debug.log
 yarn-error.log
 

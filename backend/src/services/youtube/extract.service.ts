@@ -1,9 +1,11 @@
 import { YoutubeTranscript } from 'youtube-transcript-plus';
+import { extractViaYtDlp } from './ytdlp.service.js';
 
 export type YouTubeExtract = {
   videoId: string;
   title: string;
   transcript: string;
+  transcriptSource: 'captions' | 'description';
 };
 
 const VIDEO_ID_PATTERNS = [
@@ -36,42 +38,35 @@ async function fetchVideoTitle(url: string): Promise<string> {
   return data.title?.trim() || 'Untitled YouTube video';
 }
 
-async function fetchTranscript(videoId: string): Promise<string> {
-  try {
-    const segments = await YoutubeTranscript.fetchTranscript(videoId, { lang: 'en' });
-    const text = segments
-      .map((segment) => segment.text.trim())
-      .filter(Boolean)
-      .join(' ')
-      .replace(/\s+/g, ' ')
-      .trim();
+function joinSegments(
+  segments: Array<{ text: string }>,
+): string {
+  return segments
+    .map((segment) => segment.text.trim())
+    .filter(Boolean)
+    .join(' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
 
-    if (text.length >= 20) {
-      return text;
+async function fetchTranscriptViaLibrary(videoId: string): Promise<string | null> {
+  const attempts = [
+    () => YoutubeTranscript.fetchTranscript(videoId, { lang: 'en' }),
+    () => YoutubeTranscript.fetchTranscript(videoId),
+  ];
+
+  for (const attempt of attempts) {
+    try {
+      const text = joinSegments(await attempt());
+      if (text.length >= 20) {
+        return text;
+      }
+    } catch {
+      // Try next method.
     }
-  } catch {
-    // Try auto-generated captions in any language below.
   }
 
-  try {
-    const segments = await YoutubeTranscript.fetchTranscript(videoId);
-    const text = segments
-      .map((segment) => segment.text.trim())
-      .filter(Boolean)
-      .join(' ')
-      .replace(/\s+/g, ' ')
-      .trim();
-
-    if (text.length >= 20) {
-      return text;
-    }
-  } catch {
-    // Fall through to error.
-  }
-
-  throw new Error(
-    'No usable transcript found for this video. Try a public video with captions or auto-generated subtitles.',
-  );
+  return null;
 }
 
 export async function extractYouTubeSource(youtubeUrl: string): Promise<YouTubeExtract> {
@@ -81,10 +76,37 @@ export async function extractYouTubeSource(youtubeUrl: string): Promise<YouTubeE
     throw new Error('Invalid YouTube URL');
   }
 
-  const [title, transcript] = await Promise.all([
+  const ytdlpResult = await extractViaYtDlp(youtubeUrl);
+
+  if (ytdlpResult) {
+    const fromDescription =
+      ytdlpResult.transcript.length < 200 &&
+      !ytdlpResult.transcript.includes('.') &&
+      ytdlpResult.transcript.split(' ').length < 30;
+
+    return {
+      videoId,
+      title: ytdlpResult.title,
+      transcript: ytdlpResult.transcript,
+      transcriptSource: fromDescription ? 'description' : 'captions',
+    };
+  }
+
+  const [title, libraryTranscript] = await Promise.all([
     fetchVideoTitle(youtubeUrl),
-    fetchTranscript(videoId),
+    fetchTranscriptViaLibrary(videoId),
   ]);
 
-  return { videoId, title, transcript };
+  if (libraryTranscript) {
+    return {
+      videoId,
+      title,
+      transcript: libraryTranscript,
+      transcriptSource: 'captions',
+    };
+  }
+
+  throw new Error(
+    'Could not get captions for this video. Use a public YouTube video that has subtitles turned on (CC button), then try again.',
+  );
 }

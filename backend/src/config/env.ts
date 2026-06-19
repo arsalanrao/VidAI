@@ -56,6 +56,7 @@ export const env = {
   r2SecretAccessKey: optional('R2_SECRET_ACCESS_KEY'),
   r2Bucket: optional('R2_BUCKET', 'vidaipro'),
   r2PublicUrl: optional('R2_PUBLIC_URL'),
+  ytdlpPath: optional('YTDLP_PATH'),
 } as const;
 
 export const isProd = env.nodeEnv === 'production';

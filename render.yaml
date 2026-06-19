@@ -7,7 +7,7 @@ services:
     region: oregon
     plan: free
     rootDir: backend
-    buildCommand: npm install --include=dev && npx prisma generate && npm run build
+    buildCommand: mkdir -p bin && curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o bin/yt-dlp && chmod +x bin/yt-dlp && npm install --include=dev && npx prisma generate && npm run build
     startCommand: npx prisma db push && npm start
     healthCheckPath: /health
     envVars:
@@ -15,6 +15,8 @@ services:
         value: production
       - key: RUN_WORKER
         value: "true"
+      - key: YTDLP_PATH
+        value: ./bin/yt-dlp
       - key: PORT
         value: "10000"
       - key: DATABASE_URL
