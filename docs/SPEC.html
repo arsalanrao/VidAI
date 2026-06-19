@@ -1,0 +1,574 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>VidAiPro — Technical Specification v1.0</title>
+  <style>
+    :root {
+      --bg: #0f1117;
+      --surface: #1a1d27;
+      --border: #2d3348;
+      --text: #e6e8ef;
+      --muted: #9aa3b8;
+      --accent: #6c8cff;
+      --accent2: #4ade80;
+      --warn: #fbbf24;
+    }
+    * { box-sizing: border-box; }
+    body {
+      font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.65;
+      margin: 0;
+      padding: 0;
+    }
+    .layout {
+      display: grid;
+      grid-template-columns: 280px 1fr;
+      min-height: 100vh;
+    }
+    nav.toc {
+      position: sticky;
+      top: 0;
+      height: 100vh;
+      overflow-y: auto;
+      background: var(--surface);
+      border-right: 1px solid var(--border);
+      padding: 1.5rem 1rem;
+    }
+    nav.toc h2 {
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--muted);
+      margin: 0 0 1rem;
+    }
+    nav.toc ol {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+    }
+    nav.toc li { margin-bottom: 0.35rem; }
+    nav.toc a {
+      color: var(--muted);
+      text-decoration: none;
+      font-size: 0.85rem;
+      display: block;
+      padding: 0.25rem 0.5rem;
+      border-radius: 4px;
+    }
+    nav.toc a:hover { color: var(--accent); background: rgba(108,140,255,0.1); }
+    nav.toc .sub { padding-left: 1rem; font-size: 0.8rem; }
+    main {
+      max-width: 900px;
+      padding: 2.5rem 3rem 4rem;
+    }
+    h1 {
+      font-size: 2rem;
+      margin: 0 0 0.5rem;
+      background: linear-gradient(135deg, #fff, var(--accent));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    .meta { color: var(--muted); font-size: 0.9rem; margin-bottom: 2rem; }
+    h2 {
+      font-size: 1.45rem;
+      margin: 2.5rem 0 1rem;
+      padding-bottom: 0.4rem;
+      border-bottom: 1px solid var(--border);
+      color: #fff;
+    }
+    h3 { font-size: 1.1rem; margin: 1.5rem 0 0.75rem; color: var(--accent2); }
+    h4 { font-size: 0.95rem; margin: 1rem 0 0.5rem; color: var(--warn); }
+    p { margin: 0.75rem 0; }
+    ul, ol { margin: 0.5rem 0 1rem 1.25rem; }
+    li { margin: 0.3rem 0; }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 1rem 0;
+      font-size: 0.88rem;
+    }
+    th, td {
+      border: 1px solid var(--border);
+      padding: 0.55rem 0.75rem;
+      text-align: left;
+    }
+    th { background: var(--surface); color: var(--accent); }
+    tr:nth-child(even) { background: rgba(255,255,255,0.02); }
+    pre, code {
+      font-family: "Cascadia Code", "Fira Code", Consolas, monospace;
+      font-size: 0.82rem;
+    }
+    pre {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1rem;
+      overflow-x: auto;
+      margin: 1rem 0;
+    }
+    code { background: var(--surface); padding: 0.15rem 0.4rem; border-radius: 4px; }
+    pre code { background: none; padding: 0; }
+    .diagram {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1rem;
+      font-family: monospace;
+      font-size: 0.78rem;
+      white-space: pre;
+      overflow-x: auto;
+      line-height: 1.4;
+    }
+    .badge {
+      display: inline-block;
+      background: rgba(108,140,255,0.2);
+      color: var(--accent);
+      padding: 0.15rem 0.5rem;
+      border-radius: 4px;
+      font-size: 0.75rem;
+      margin-right: 0.5rem;
+    }
+    .note {
+      border-left: 3px solid var(--accent);
+      background: rgba(108,140,255,0.08);
+      padding: 0.75rem 1rem;
+      margin: 1rem 0;
+      border-radius: 0 6px 6px 0;
+    }
+    @media print {
+      .layout { display: block; }
+      nav.toc { display: none; }
+      main { max-width: 100%; padding: 1rem; }
+      body { background: #fff; color: #000; }
+      h1, h2, h3 { color: #000; -webkit-text-fill-color: #000; }
+      pre, .diagram { border: 1px solid #ccc; background: #f5f5f5; }
+    }
+    @media (max-width: 768px) {
+      .layout { grid-template-columns: 1fr; }
+      nav.toc { position: relative; height: auto; }
+      main { padding: 1.5rem; }
+    }
+  </style>
+</head>
+<body>
+<div class="layout">
+
+<nav class="toc">
+  <h2>Table of Contents</h2>
+  <ol>
+    <li><a href="#s1">1. Project Overview</a></li>
+    <li><a href="#s2">2. Version 1 Architecture (MVP)</a></li>
+    <li><a href="#s3">3. User Flow &amp; Frontend Screens</a></li>
+    <li><a href="#s4">4. Pipeline Stages (Detailed)</a></li>
+    <li><a href="#s5">5. Exact AI Models Per Stage</a></li>
+    <li><a href="#s6">6. API Specification</a></li>
+    <li><a href="#s7">7. FFmpeg Workflow</a></li>
+    <li><a href="#s8">8. YouTube Upload Flow</a></li>
+    <li><a href="#s9">9. Backend Architecture</a></li>
+    <li><a href="#s10">10. Queue System</a></li>
+    <li><a href="#s11">11. Database Design</a></li>
+    <li><a href="#s12">12. Folder Structure</a></li>
+    <li><a href="#s13">13. Cost Optimization</a></li>
+    <li><a href="#s14">14. Version 2 (Advanced)</a></li>
+    <li><a href="#s15">15. Scalability &amp; Future Features</a></li>
+    <li><a href="#s16">16. Implementation Phases</a></li>
+    <li class="sub"><a href="#appendix-a">Appendix A: Kimi Prompt</a></li>
+    <li class="sub"><a href="#appendix-b">Appendix B: Environment Variables</a></li>
+    <li class="sub"><a href="#appendix-c">Appendix C: Cursor Instructions</a></li>
+  </ol>
+</nav>
+
+<main>
+
+<h1>VidAiPro — Complete Technical Specification</h1>
+<p class="meta">
+  <span class="badge">v1.0</span>
+  Document date: June 19, 2026 &nbsp;|&nbsp;
+  Product: Automated viral YouTube Shorts from reference videos &nbsp;|&nbsp;
+  Stack: React Native 0.86 + FastAPI + Celery + GPU workers
+</p>
+
+<!-- SECTION 1 -->
+<h2 id="s1">1. Project Overview</h2>
+
+<h3>1.1 Vision</h3>
+<p>VidAiPro lets a creator paste a viral YouTube URL and automatically produce a <strong>new, original Short</strong> inspired by the reference video's structure — not a remix of the original footage.</p>
+<p><strong>Input:</strong> <code>https://youtube.com/watch?v=...</code><br>
+<strong>Output:</strong> Finished vertical Short (9:16) with new title, hook, narration, visuals, thumbnail — ready for YouTube upload after user approval.</p>
+
+<h3>1.2 Core Principle: Rewrite, Don't Remix</h3>
+<table>
+  <tr><th>Do</th><th>Don't</th></tr>
+  <tr><td>Extract transcript, hook, pacing, structure</td><td>Reuse original video/audio</td></tr>
+  <tr><td>Rewrite script with Kimi K2.6</td><td>Copy sentences verbatim</td></tr>
+  <tr><td>Generate new images and video clips</td><td>Download and edit source video</td></tr>
+  <tr><td>Create new thumbnail</td><td>Steal original thumbnail pixels</td></tr>
+</table>
+
+<h3>1.3 System Components</h3>
+<div class="diagram">┌─────────────────────────────────────────────────────────────┐
+│  MOBILE APP (React Native — VidAiPro)                       │
+│  URL paste · job progress · preview · approve · upload    │
+└──────────────────────────┬──────────────────────────────────┘
+                           │ HTTPS / REST / WebSocket
+┌──────────────────────────▼──────────────────────────────────┐
+│  API SERVER (FastAPI)                                       │
+│  Auth · jobs · assets · YouTube OAuth · webhooks            │
+└──────────────────────────┬──────────────────────────────────┘
+        ┌──────────────────┼──────────────────┐
+        ▼                  ▼                  ▼
+┌──────────────┐  ┌──────────────┐  ┌──────────────┐
+│  PostgreSQL  │  │    Redis     │  │ Object Store │
+│  jobs, users │  │ queue, cache │  │ S3 / MinIO   │
+└──────────────┘  └──────┬───────┘  └──────────────┘
+                         │
+        ┌────────────────┼────────────────┐
+        ▼                ▼                ▼
+┌──────────────┐  ┌──────────────┐  ┌──────────────┐
+│ CPU Worker   │  │ GPU Worker   │  │ Post Worker  │
+│ extract, API │  │ FLUX, TTS    │  │ FFmpeg, lip  │
+└──────────────┘  └──────────────┘  └──────────────┘</div>
+
+<h3>1.4 Current Codebase State</h3>
+<p>VidAiPro today is a bare React Native 0.86 scaffold (<code>App.tsx</code> → default <code>NewAppScreen</code>). No backend, no AI, no media pipeline exists yet.</p>
+
+<h3>1.5 Target Output Spec (Shorts)</h3>
+<table>
+  <tr><th>Property</th><th>Value</th></tr>
+  <tr><td>Resolution</td><td>1080 × 1920 (9:16)</td></tr>
+  <tr><td>Frame rate</td><td>30 fps</td></tr>
+  <tr><td>Video codec</td><td>H.264 (libx264)</td></tr>
+  <tr><td>Audio codec</td><td>AAC, 48 kHz</td></tr>
+  <tr><td>Duration</td><td>30–59 seconds</td></tr>
+  <tr><td>Subtitles</td><td>Burned-in word-level (V2)</td></tr>
+</table>
+
+<!-- SECTION 2 -->
+<h2 id="s2">2. Version 1 Architecture (MVP)</h2>
+
+<h3>2.1 MVP Scope</h3>
+<p><strong>Included:</strong> URL paste · extract · Kimi K2.6 · FLUX thumbnails (3, manual pick) · Magpie TTS · FLUX keyframes · FFmpeg Ken Burns · merge · preview · YouTube upload (private).</p>
+<p><strong>Excluded (V2):</strong> Cosmos video animation · lip sync · Qwen thumbnail polish · auto thumbnail · karaoke subs · BGM · Magpie Zeroshot · batch publishing.</p>
+
+<h3>2.2 V1 Pipeline</h3>
+<div class="diagram">YouTube URL
+    ↓
+[1] Extract (yt-dlp + Whisper fallback)
+    ↓
+[2] Kimi K2.6 → creative JSON
+    ↓
+┌───┴───┬───────────┬────────────┐
+▼       ▼           ▼            │  PARALLEL
+Thumb   TTS         Keyframes    │
+FLUX×3  Magpie      FLUX/scene   │
+    ↓       ↓           ↓        │
+[4] Ken Burns per scene (FFmpeg) │
+    └───────┴───────────┘        │
+              ↓                  │
+[5] FFmpeg merge + narration     │
+              ↓                  │
+[6] Preview → Approve → Upload   │</div>
+
+<h3>2.3 V1 vs V2 Model Stack</h3>
+<table>
+  <tr><th>Stage</th><th>V1 (MVP)</th><th>V2 (Advanced)</th></tr>
+  <tr><td>Analysis + script</td><td>Kimi K2.6 (API)</td><td>Kimi + fact-check pass</td></tr>
+  <tr><td>Thumbnail</td><td>FLUX.2 Klein 4B</td><td>FLUX + Qwen-Image-Edit-2511</td></tr>
+  <tr><td>Narration</td><td>Magpie Multilingual</td><td>Magpie Zeroshot</td></tr>
+  <tr><td>Scene images</td><td>FLUX.2 Klein 4B</td><td>FLUX + multi-reference</td></tr>
+  <tr><td>Scene video</td><td>FFmpeg Ken Burns</td><td>Cosmos-Predict2-2B Video2World</td></tr>
+  <tr><td>Lip sync</td><td>None</td><td>Wav2Lip / MuseTalk</td></tr>
+  <tr><td>Subtitles</td><td>None</td><td>Whisper + karaoke burn</td></tr>
+  <tr><td>Music</td><td>None</td><td>BGM with ducking</td></tr>
+</table>
+
+<!-- SECTION 3 -->
+<h2 id="s3">3. User Flow &amp; Frontend Screens</h2>
+
+<h3>3.1 Navigation</h3>
+<pre><code>App
+├── AuthStack
+│   └── LoginScreen
+└── MainStack
+    ├── HomeScreen
+    ├── CreateJobScreen
+    ├── JobProgressScreen
+    ├── ThumbnailPickerScreen
+    ├── PreviewScreen
+    ├── EditMetadataScreen
+    ├── YouTubeConnectScreen
+    └── JobHistoryScreen</code></pre>
+
+<h3>3.2 Screen Summary</h3>
+<table>
+  <tr><th>Screen</th><th>Purpose</th><th>Key API</th></tr>
+  <tr><td>HomeScreen</td><td>Entry, recent jobs</td><td>GET /jobs</td></tr>
+  <tr><td>CreateJobScreen</td><td>Paste YouTube URL</td><td>POST /jobs</td></tr>
+  <tr><td>JobProgressScreen</td><td>Real-time status</td><td>GET /jobs/{id} or WS</td></tr>
+  <tr><td>ThumbnailPickerScreen</td><td>Pick 1 of 3 thumbnails</td><td>PATCH /jobs/{id}/thumbnail</td></tr>
+  <tr><td>PreviewScreen</td><td>Watch final.mp4</td><td>GET signed asset URL</td></tr>
+  <tr><td>EditMetadataScreen</td><td>Edit title, tags</td><td>PATCH /jobs/{id}/metadata</td></tr>
+  <tr><td>YouTubeConnectScreen</td><td>Google OAuth</td><td>GET /youtube/auth-url</td></tr>
+  <tr><td>JobHistoryScreen</td><td>Past jobs + links</td><td>GET /jobs?page=1</td></tr>
+</table>
+
+<!-- SECTION 4 -->
+<h2 id="s4">4. Pipeline Stages (Detailed)</h2>
+
+<h3>Stage 1: YouTube Extraction</h3>
+<p><strong>Tools:</strong> yt-dlp, ffmpeg, Whisper (fallback)<br>
+<strong>Output:</strong> <code>source_manifest.json</code> with transcript, captions, thumbnail, duration, metadata.</p>
+
+<h3>Stage 2: Kimi K2.6 Creative Package</h3>
+<p><strong>Model:</strong> <code>kimi-k2.6</code> @ <code>https://api.moonshot.ai/v1</code><br>
+<strong>Config:</strong> <code>thinking: { type: "disabled" }</code> for fast JSON.</p>
+<pre><code>{
+  "newTitle": "Scientists Fear These 5 Sea Monsters",
+  "newHook": "Number 3 has killed more people than sharks.",
+  "description": "...",
+  "tags": ["sea monsters", "ocean", "shorts"],
+  "narration": "Full voiceover script...",
+  "thumbnailPrompt": "Dramatic underwater scene...",
+  "scenes": [
+    {
+      "id": 1,
+      "duration": 4,
+      "narration": "You won't believe what lurks beneath the waves.",
+      "imagePrompt": "Dark deep ocean, 9:16, no text",
+      "needs_lip_sync": false,
+      "style": "b-roll"
+    }
+  ]
+}</code></pre>
+
+<h3>Stage 3: Parallel Generation</h3>
+<ul>
+  <li><strong>3a Thumbnail:</strong> FLUX.2 Klein 4B × 3 → thumb_0..2.jpg</li>
+  <li><strong>3b TTS:</strong> Magpie Multilingual → narration.wav</li>
+  <li><strong>3c Keyframes:</strong> FLUX per scene → scene_01.png...</li>
+</ul>
+<div class="note">After TTS, measure audio duration and proportionally adjust scene durations to match.</div>
+
+<h3>Stage 4: Scene Video</h3>
+<p><strong>V1:</strong> FFmpeg Ken Burns zoom/pan on each keyframe.<br>
+<strong>V2:</strong> Cosmos-Predict2-2B-Video2World (image + prompt → clip).</p>
+
+<h3>Stage 5: Lip Sync (V2 only, BEFORE merge)</h3>
+<p>Only when <code>needs_lip_sync: true</code>. Use Wav2Lip or MuseTalk per talking-head scene — never on merged B-roll.</p>
+
+<h3>Stage 6: FFmpeg Final Merge</h3>
+<p>Concat scenes + mux narration + (V2) subs + BGM → final.mp4</p>
+
+<h3>Stage 7–8: Preview &amp; Upload</h3>
+<p>User watches preview → approves → backend uploads via YouTube Data API v3 (resumable).</p>
+
+<!-- SECTION 5 -->
+<h2 id="s5">5. Exact AI Models Per Stage</h2>
+<table>
+  <tr><th>#</th><th>Stage</th><th>Model ID</th><th>Hosting</th><th>Ver</th></tr>
+  <tr><td>1</td><td>Transcript fallback</td><td>Whisper large-v3</td><td>Local</td><td>V1</td></tr>
+  <tr><td>2</td><td>Script + analysis</td><td>kimi-k2.6</td><td>Moonshot API</td><td>V1</td></tr>
+  <tr><td>3</td><td>Thumbnails + keyframes</td><td>FLUX.2-klein-4B</td><td>Local GPU / fal.ai</td><td>V1</td></tr>
+  <tr><td>4</td><td>Thumbnail polish</td><td>Qwen-Image-Edit-2511</td><td>Local GPU / NIM</td><td>V2</td></tr>
+  <tr><td>5</td><td>Narration</td><td>magpie_tts_multilingual_357m</td><td>NeMo / NIM</td><td>V1</td></tr>
+  <tr><td>6</td><td>Voice clone</td><td>Magpie Zeroshot</td><td>NIM</td><td>V2</td></tr>
+  <tr><td>7</td><td>Scene animation</td><td>Cosmos-Predict2-2B-Video2World</td><td>Local GPU</td><td>V2</td></tr>
+  <tr><td>8</td><td>Lip sync</td><td>Wav2Lip / MuseTalk</td><td>Local GPU</td><td>V2</td></tr>
+  <tr><td>9</td><td>Ken Burns video</td><td>FFmpeg</td><td>CPU</td><td>V1</td></tr>
+</table>
+
+<!-- SECTION 6 -->
+<h2 id="s6">6. API Specification</h2>
+<p><strong>Base:</strong> <code>https://api.vidaipro.com/api/v1</code></p>
+
+<h3>POST /jobs</h3>
+<pre><code>Request:
+{
+  "source_url": "https://www.youtube.com/watch?v=abc123",
+  "options": {
+    "voice": "Magpie-Multilingual.EN-US.Jason",
+    "target_duration_sec": 45
+  }
+}
+
+Response 201:
+{
+  "id": "550e8400-e29b-41d4-a716-446655440000",
+  "status": "queued",
+  "progress": { "current_stage": "extract", "percent": 0 }
+}</code></pre>
+
+<h3>Other Endpoints</h3>
+<table>
+  <tr><th>Method</th><th>Path</th><th>Purpose</th></tr>
+  <tr><td>GET</td><td>/jobs/{id}</td><td>Job status + assets</td></tr>
+  <tr><td>PATCH</td><td>/jobs/{id}/thumbnail</td><td>Select thumbnail index</td></tr>
+  <tr><td>PATCH</td><td>/jobs/{id}/metadata</td><td>Edit title, tags, privacy</td></tr>
+  <tr><td>POST</td><td>/jobs/{id}/regenerate</td><td>full | thumbnail | scene | narration</td></tr>
+  <tr><td>POST</td><td>/jobs/{id}/approve</td><td>Mark ready for upload</td></tr>
+  <tr><td>POST</td><td>/jobs/{id}/upload</td><td>Upload to YouTube</td></tr>
+  <tr><td>GET</td><td>/youtube/auth-url</td><td>Start OAuth</td></tr>
+  <tr><td>WS</td><td>/jobs/{id}/stream</td><td>Live progress events</td></tr>
+</table>
+
+<!-- SECTION 7 -->
+<h2 id="s7">7. FFmpeg Workflow</h2>
+
+<h3>7.1 Ken Burns (V1)</h3>
+<pre><code>ffmpeg -y -loop 1 -i scene_01.png \
+  -vf "scale=1216:2160:force_original_aspect_ratio=increase,crop=1080:1920,\
+       zoompan=z='min(1+0.001*on,1.2)':d=120:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=1080x1920:fps=30" \
+  -t 4 -an -c:v libx264 -preset fast -crf 23 -pix_fmt yuv420p scene_01.mp4</code></pre>
+
+<h3>7.2 Concat + Audio Mux</h3>
+<pre><code>ffmpeg -y -f concat -safe 0 -i concat_list.txt -c copy all_scenes.mp4
+ffmpeg -y -i all_scenes.mp4 -i narration.wav -c:v copy -c:a aac -b:a 192k -shortest final.mp4</code></pre>
+
+<h3>7.3 YouTube Normalize</h3>
+<pre><code>ffmpeg -y -i final.mp4 -c:v libx264 -preset slow -crf 18 \
+  -c:a aac -b:a 192k -ar 48000 -movflags +faststart -pix_fmt yuv420p final_youtube.mp4</code></pre>
+
+<!-- SECTION 8 -->
+<h2 id="s8">8. YouTube Upload Flow</h2>
+<ol>
+  <li>Create GCP project → enable YouTube Data API v3</li>
+  <li>OAuth 2.0 credentials (backend only — never in mobile app)</li>
+  <li>Scopes: <code>youtube.upload</code>, <code>youtube</code></li>
+  <li>Store encrypted refresh_token in PostgreSQL</li>
+  <li>Resumable upload: <code>videos.insert</code> with 10 MB chunks</li>
+  <li>Separate call: <code>thumbnails.set</code></li>
+  <li>Default privacy: <code>private</code></li>
+</ol>
+
+<!-- SECTION 9 -->
+<h2 id="s9">9. Backend Architecture</h2>
+<table>
+  <tr><th>Component</th><th>Technology</th></tr>
+  <tr><td>API</td><td>FastAPI (Python 3.11+)</td></tr>
+  <tr><td>ORM</td><td>SQLAlchemy 2.0 + Alembic</td></tr>
+  <tr><td>Queue</td><td>Celery 5 + Redis 7</td></tr>
+  <tr><td>DB</td><td>PostgreSQL 16</td></tr>
+  <tr><td>Storage</td><td>MinIO (dev) / S3 (prod)</td></tr>
+</table>
+
+<h3>Job State Machine</h3>
+<pre><code>queued → extracting → analyzing → generating → composing
+  → preview_ready → approved → uploading → published
+(any stage → failed)</code></pre>
+
+<!-- SECTION 10 -->
+<h2 id="s10">10. Queue System</h2>
+<table>
+  <tr><th>Queue</th><th>Worker</th><th>Tasks</th></tr>
+  <tr><td>cpu</td><td>cpu-worker</td><td>extract, kimi, whisper</td></tr>
+  <tr><td>gpu-image</td><td>gpu-image-worker</td><td>flux, qwen</td></tr>
+  <tr><td>gpu-audio</td><td>gpu-audio-worker</td><td>magpie tts</td></tr>
+  <tr><td>gpu-video</td><td>gpu-video-worker</td><td>cosmos (V2)</td></tr>
+  <tr><td>post</td><td>post-worker</td><td>ffmpeg, lipsync, upload</td></tr>
+</table>
+<p>After Kimi: <code>group(thumbnails, tts, keyframes)</code> → chord → scene clips → compose → notify.</p>
+
+<!-- SECTION 11 -->
+<h2 id="s11">11. Database Design</h2>
+<p>Core tables: <code>users</code>, <code>youtube_tokens</code>, <code>jobs</code>, <code>job_scenes</code>, <code>job_assets</code>, <code>job_events</code>.</p>
+<p>Jobs store <code>source_manifest</code> (JSONB), <code>creative_package</code> (JSONB), publish metadata, YouTube video ID. Scenes store per-scene prompts, durations, asset paths, lip sync flag.</p>
+
+<!-- SECTION 12 -->
+<h2 id="s12">12. Folder Structure</h2>
+<pre><code>VidAiPro/
+├── apps/mobile/          # React Native
+├── services/api/         # FastAPI
+├── workers/              # Celery tasks
+├── ml/                   # flux, magpie, cosmos, lipsync, whisper
+├── prompts/              # kimi_analyze.md, kimi_creative.md
+├── infra/                # docker-compose
+└── docs/SPEC.html        # this document</code></pre>
+
+<!-- SECTION 13 -->
+<h2 id="s13">13. Cost Optimization</h2>
+<table>
+  <tr><th>Component</th><th>V1/Job</th><th>V2/Job</th></tr>
+  <tr><td>Kimi API</td><td>$0.02–0.08</td><td>$0.05–0.15</td></tr>
+  <tr><td>FLUX (self-hosted)</td><td>~$0.05</td><td>~$0.08</td></tr>
+  <tr><td>Magpie TTS</td><td>~$0.01</td><td>~$0.02</td></tr>
+  <tr><td>Cosmos (V2)</td><td>—</td><td>~$0.30–1.00</td></tr>
+  <tr><td><strong>Total</strong></td><td><strong>~$0.10–0.15</strong></td><td><strong>~$0.50–1.30</strong></td></tr>
+</table>
+<ul>
+  <li>Parallel generation after Kimi</li>
+  <li>Cache analysis by source_video_id</li>
+  <li>Batch FLUX in one model load</li>
+  <li>V1 Ken Burns skips GPU video models</li>
+  <li>Kimi thinking disabled for JSON</li>
+</ul>
+
+<!-- SECTION 14 -->
+<h2 id="s14">14. Version 2 (Advanced)</h2>
+<ul>
+  <li>Cosmos-Predict2 scene animation</li>
+  <li>Lip sync before merge (Wav2Lip / MuseTalk)</li>
+  <li>Qwen thumbnail text overlays</li>
+  <li>Magpie Zeroshot voice cloning</li>
+  <li>Karaoke subtitles + BGM ducking</li>
+  <li>Auto thumbnail selection</li>
+  <li>Per-scene regenerate API</li>
+</ul>
+
+<!-- SECTION 15 -->
+<h2 id="s15">15. Scalability &amp; Future Features</h2>
+<table>
+  <tr><th>Scale</th><th>Architecture</th></tr>
+  <tr><td>1–100 users</td><td>Single GPU, docker-compose</td></tr>
+  <tr><td>100–1K</td><td>Separate GPU pools per model</td></tr>
+  <tr><td>1K–10K</td><td>Kubernetes + GPU autoscaling</td></tr>
+</table>
+<p><strong>V3+:</strong> TikTok/Reels export · multi-language · scheduled publishing · competitor monitoring · team workspaces.</p>
+
+<!-- SECTION 16 -->
+<h2 id="s16">16. Implementation Phases</h2>
+<table>
+  <tr><th>Phase</th><th>Weeks</th><th>Deliverable</th></tr>
+  <tr><td>1 Foundation</td><td>1–2</td><td>API + DB + extract + mobile progress</td></tr>
+  <tr><td>2 Kimi + Assets</td><td>3–4</td><td>Creative JSON + thumbnails + TTS + keyframes</td></tr>
+  <tr><td>3 Compose</td><td>5</td><td>Ken Burns + final.mp4 + preview</td></tr>
+  <tr><td>4 YouTube</td><td>6</td><td>OAuth + upload + metadata edit</td></tr>
+  <tr><td>5 V2</td><td>7+</td><td>Cosmos + lip sync + subs</td></tr>
+</table>
+
+<h2 id="appendix-a">Appendix A: Kimi Creative Prompt</h2>
+<pre><code>You are a viral YouTube Shorts creative director.
+Produce COMPLETELY ORIGINAL content inspired by source structure.
+Output ONLY valid JSON. Hook in first 2 seconds. 30-59 sec total.
+5-8 scenes. imagePrompt must include "vertical 9:16, no text".
+needs_lip_sync: true ONLY for talking-head scenes.</code></pre>
+
+<h2 id="appendix-b">Appendix B: Environment Variables</h2>
+<pre><code>DATABASE_URL=postgresql://...
+REDIS_URL=redis://...
+S3_BUCKET=vidaipro-assets
+MOONSHOT_API_KEY=...
+GOOGLE_CLIENT_ID=...
+GOOGLE_CLIENT_SECRET=...
+JWT_SECRET=...</code></pre>
+
+<h2 id="appendix-c">Appendix C: Cursor AI Instructions</h2>
+<ol>
+  <li>Implement Phase 1 first — V1 end-to-end before V2 models</li>
+  <li>Move RN code to apps/mobile/</li>
+  <li>Validate Kimi output with Pydantic CreativePackage schema</li>
+  <li>Lip sync BEFORE FFmpeg merge (V2)</li>
+  <li>YouTube tokens encrypted at rest</li>
+  <li>Use Cosmos-Predict2 for V2 video — not Transfer1 without control maps</li>
+  <li>Test with one known Short URL until preview works</li>
+</ol>
+
+<p class="meta" style="margin-top:3rem;">— End of VidAiPro Technical Specification v1.0 —</p>
+
+</main>
+</div>
+</body>
+</html>

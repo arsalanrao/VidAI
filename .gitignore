@@ -35,9 +35,15 @@ local.properties
 !debug.keystore
 .kotlin/
 
+# Secrets
+.env
+.env.local
+VidAiPro-SECRETS.txt
+
 # node.js
 #
 node_modules/
+backend/dist/
 npm-debug.log
 yarn-error.log
 
