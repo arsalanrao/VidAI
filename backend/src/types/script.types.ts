@@ -7,6 +7,8 @@ export const MOTION_PRESETS = [
   'history',
   'mystery',
   'epic',
+  'fantasy',
+  'cyberpunk',
 ] as const;
 
 export type MotionPreset = (typeof MOTION_PRESETS)[number];
@@ -107,6 +109,14 @@ function normalizeMotionPreset(raw?: string): MotionPreset {
 
   if (value.includes('epic')) {
     return 'epic';
+  }
+
+  if (value.includes('fantasy') || value.includes('magical')) {
+    return 'fantasy';
+  }
+
+  if (value.includes('cyber') || value.includes('neon') || value.includes('futur')) {
+    return 'cyberpunk';
   }
 
   return 'cinematic';

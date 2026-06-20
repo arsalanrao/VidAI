@@ -54,7 +54,7 @@ function normalizeInput(text: string): string {
   return input;
 }
 
-async function magpieTts(text: string): Promise<Buffer> {
+async function magpieTts(text: string, voice?: string): Promise<Buffer> {
   const apiKey = getMagpieApiKey();
 
   if (!apiKey) {
@@ -65,7 +65,7 @@ async function magpieTts(text: string): Promise<Buffer> {
   const form = new FormData();
   form.append('language', env.ttsLanguage);
   form.append('text', input);
-  form.append('voice', env.ttsVoice);
+  form.append('voice', voice ?? env.ttsVoice);
 
   const response = await fetch(`${getMagpieBaseUrl()}/v1/audio/synthesize`, {
     method: 'POST',
@@ -84,7 +84,7 @@ async function magpieTts(text: string): Promise<Buffer> {
   return Buffer.from(await response.arrayBuffer());
 }
 
-async function openaiTts(text: string): Promise<Buffer> {
+async function openaiTts(text: string, voice?: string): Promise<Buffer> {
   if (!env.openaiApiKey) {
     throw new Error('OPENAI_API_KEY not configured (required for OpenAI TTS)');
   }
@@ -100,7 +100,7 @@ async function openaiTts(text: string): Promise<Buffer> {
     body: JSON.stringify({
       model: 'tts-1',
       input,
-      voice: env.ttsVoice,
+      voice: voice ?? env.ttsVoice,
       response_format: 'wav',
     }),
   });
@@ -113,28 +113,34 @@ async function openaiTts(text: string): Promise<Buffer> {
   return Buffer.from(await response.arrayBuffer());
 }
 
-async function synthesizeWithFallback(text: string, primary: TtsProvider): Promise<Buffer> {
+async function synthesizeWithFallback(
+  text: string,
+  primary: TtsProvider,
+  voiceConfig?: { voice: string; openaiVoice?: string },
+): Promise<Buffer> {
   const fallback = getFallback();
+  const magpieVoice = voiceConfig?.voice ?? env.ttsVoice;
+  const openaiVoice = voiceConfig?.openaiVoice ?? env.ttsVoice;
   const attempts: Array<{ provider: string; run: () => Promise<Buffer> }> = [];
 
   if (primary === 'magpie') {
-    attempts.push({ provider: 'magpie', run: () => magpieTts(text) });
+    attempts.push({ provider: 'magpie', run: () => magpieTts(text, magpieVoice) });
   } else if (primary === 'chatterbox') {
-    attempts.push({ provider: 'chatterbox', run: () => chatterboxTts(text) });
+    attempts.push({ provider: 'chatterbox', run: () => chatterboxTts(text, magpieVoice) });
   } else {
-    attempts.push({ provider: 'openai', run: () => openaiTts(text) });
+    attempts.push({ provider: 'openai', run: () => openaiTts(text, openaiVoice) });
   }
 
   if (fallback === 'magpie-grpc') {
-    attempts.push({ provider: 'magpie-grpc', run: () => magpieGrpcTts(text) });
+    attempts.push({ provider: 'magpie-grpc', run: () => magpieGrpcTts(text, magpieVoice) });
   }
 
   if (primary !== 'chatterbox' && fallback === 'chatterbox' && isChatterboxEnabled()) {
-    attempts.push({ provider: 'chatterbox', run: () => chatterboxTts(text) });
+    attempts.push({ provider: 'chatterbox', run: () => chatterboxTts(text, magpieVoice) });
   }
 
   if (primary !== 'openai' && fallback === 'openai') {
-    attempts.push({ provider: 'openai', run: () => openaiTts(text) });
+    attempts.push({ provider: 'openai', run: () => openaiTts(text, openaiVoice) });
   }
 
   const errors: string[] = [];
@@ -180,9 +186,12 @@ export async function listMagpieVoices(): Promise<unknown> {
 
 export { listChatterboxVoices, listMagpieGrpcVoices };
 
-export async function generateNarrationAudio(text: string): Promise<Buffer> {
+export async function generateNarrationAudio(
+  text: string,
+  voiceConfig?: { voice: string; openaiVoice?: string },
+): Promise<Buffer> {
   const provider = getProvider();
-  return synthesizeWithFallback(text, provider);
+  return synthesizeWithFallback(text, provider, voiceConfig);
 }
 
 export async function checkTtsConnection(): Promise<{

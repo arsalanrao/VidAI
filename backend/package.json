@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/app.ts",
-    "build": "prisma generate && tsc",
+    "verify": "prisma generate && tsc --noEmit",
+    "build": "npm run verify && tsc",
     "start": "node dist/app.js",
     "postinstall": "prisma generate",
     "worker": "node dist/workers/pipeline.worker.js",

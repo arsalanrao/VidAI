@@ -57,7 +57,7 @@ function getChatterboxGrpcOptions() {
   };
 }
 
-export async function magpieGrpcTts(text: string): Promise<Buffer> {
+export async function magpieGrpcTts(text: string, voiceName?: string): Promise<Buffer> {
   const apiKey = getMagpieApiKey();
 
   if (!apiKey) {
@@ -75,7 +75,7 @@ export async function magpieGrpcTts(text: string): Promise<Buffer> {
       ...getMagpieGrpcOptions(),
       text: input,
       languageCode: env.ttsLanguage,
-      voiceName: env.ttsVoice,
+      voiceName: voiceName ?? env.ttsVoice,
     });
   } catch (err) {
     throw formatRivaError('Magpie gRPC TTS', err);
@@ -96,7 +96,7 @@ export async function listMagpieGrpcVoices(): Promise<unknown> {
   }
 }
 
-export async function chatterboxTts(text: string): Promise<Buffer> {
+export async function chatterboxTts(text: string, voiceName?: string): Promise<Buffer> {
   const apiKey = getChatterboxApiKey();
 
   if (!apiKey) {
@@ -114,7 +114,7 @@ export async function chatterboxTts(text: string): Promise<Buffer> {
       ...getChatterboxGrpcOptions(),
       text: input,
       languageCode: env.ttsLanguage,
-      voiceName: env.chatterboxVoice,
+      voiceName: voiceName ?? env.chatterboxVoice,
     });
   } catch (err) {
     throw formatRivaError('Chatterbox TTS', err);

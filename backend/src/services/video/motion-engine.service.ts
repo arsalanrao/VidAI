@@ -35,6 +35,8 @@ function buildSegments(
     history: ['zoom-in', 'pan-left', 'zoom-out'],
     mystery: ['zoom-out', 'shake', 'zoom-in'],
     epic: ['zoom-in', 'pan-right', 'zoom-out'],
+    fantasy: ['zoom-in', 'pan-right', 'pan-left'],
+    cyberpunk: ['pan-left', 'zoom-in', 'shake'],
   };
 
   const motions = motionsByPreset[preset] ?? motionsByPreset.cinematic;

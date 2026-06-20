@@ -24,6 +24,7 @@ model Project {
   errorMessage String?
 
   script      Json?
+  preferences Json?
   thumbnail   String?
   videoUrl    String?
   narrationUrl String?
