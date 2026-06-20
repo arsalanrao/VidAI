@@ -5,6 +5,7 @@ import {
   type CloudRenderJobData,
   type RegenerateSceneJobData,
   type RegenerateThumbnailJobData,
+  type ResumePipelineJobData,
   type VideoJobData,
 } from '../queues/video.queue.js';
 import { prisma } from '../db/client.js';
@@ -16,18 +17,82 @@ import {
   regenerateScene,
   regenerateThumbnail,
 } from '../services/pipeline/regenerate-stage.service.js';
+import {
+  inferFailedStageFromError,
+  markPipelineFailure,
+  PipelineStageError,
+  type PipelineFailedStage,
+} from '../services/pipeline/pipeline-recovery.service.js';
+import { queueCloudRender } from '../services/video/cloud-render-dispatch.service.js';
 import { videoQueue } from '../queues/video.queue.js';
+import type { VoicePreset } from '../types/project-preferences.types.js';
+
+type WorkerJobData =
+  | VideoJobData
+  | CloudRenderJobData
+  | RegenerateThumbnailJobData
+  | RegenerateSceneJobData
+  | ResumePipelineJobData;
+
+async function runStage<T>(
+  projectId: string,
+  stage: PipelineFailedStage,
+  fn: () => Promise<T>,
+): Promise<T> {
+  try {
+    return await fn();
+  } catch (err) {
+    const failedStage = err instanceof PipelineStageError ? err.stage : stage;
+    const message = err instanceof Error ? err.message : `${stage} stage failed`;
+    await markPipelineFailure(projectId, failedStage, message);
+    throw err;
+  }
+}
+
+async function continueAfterScript(projectId: string, job: Job<WorkerJobData>): Promise<void> {
+  await job.updateProgress(30);
+  await runStage(projectId, 'images', () => runFluxStage(projectId, { skipExisting: true }));
+  await job.updateProgress(70);
+  await runStage(projectId, 'audio', () => runTtsStage(projectId));
+  await job.updateProgress(90);
+  await finishRender(projectId);
+  await job.updateProgress(100);
+}
+
+async function finishRender(projectId: string): Promise<void> {
+  try {
+    await runCloudRenderStage(projectId);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Cloud render failed';
+    await markPipelineFailure(projectId, 'render', message);
+    console.error(`[worker] cloud render failed for ${projectId}:`, message);
+  }
+}
 
 async function processRegenerateThumbnailJob(job: Job<RegenerateThumbnailJobData>): Promise<void> {
   const { projectId } = job.data;
-  await regenerateThumbnail(projectId);
-  console.log(`[worker] thumbnail regenerated for ${projectId}`);
+
+  try {
+    await regenerateThumbnail(projectId);
+    console.log(`[worker] thumbnail regenerated for ${projectId}`);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Thumbnail regeneration failed';
+    await markPipelineFailure(projectId, 'images', message);
+    throw err;
+  }
 }
 
 async function processRegenerateSceneJob(job: Job<RegenerateSceneJobData>): Promise<void> {
-  const { projectId, sceneId } = job.data;
-  await regenerateScene(projectId, sceneId);
-  console.log(`[worker] scene ${sceneId} regenerated for ${projectId}`);
+  const { projectId, sceneId, promptOverride, fluxStartAttempt } = job.data;
+
+  try {
+    await regenerateScene(projectId, sceneId, { promptOverride, fluxStartAttempt });
+    console.log(`[worker] scene ${sceneId} regenerated for ${projectId}`);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Scene regeneration failed';
+    await markPipelineFailure(projectId, 'images', message);
+    throw err;
+  }
 }
 
 async function processCloudRenderJob(job: Job<CloudRenderJobData>): Promise<void> {
@@ -38,16 +103,79 @@ async function processCloudRenderJob(job: Job<CloudRenderJobData>): Promise<void
     console.log(`[worker] cloud render finished for ${projectId}: ${result.videoKey}`);
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Cloud render failed';
-
-    await prisma.project.update({
-      where: { id: projectId },
-      data: {
-        status: 'waiting_for_renderer',
-        errorMessage: message,
-      },
-    });
-
+    await markPipelineFailure(projectId, 'render', message);
     throw err;
+  }
+}
+
+async function processResumePipelineJob(job: Job<ResumePipelineJobData>): Promise<void> {
+  const { projectId, fromStage, options } = job.data;
+
+  await prisma.project.update({
+    where: { id: projectId },
+    data: { status: 'processing', errorMessage: null },
+  });
+
+  if (fromStage === 'start' || fromStage === 'script') {
+    const extractModes: Array<'default' | 'captions' | 'title_only'> = [
+      'default',
+      'captions',
+      'title_only',
+    ];
+    const recoveryIndex = options?.extractMode
+      ? extractModes.indexOf(options.extractMode)
+      : Math.min((options?.fluxStartAttempt ?? 0) + 1, extractModes.length - 1);
+
+    await runStage(projectId, 'start', () =>
+      runScriptStage(projectId, {
+        userDirection: options?.userDirection,
+        extractMode: options?.extractMode ?? extractModes[Math.max(0, recoveryIndex)] ?? 'default',
+      }),
+    );
+    await continueAfterScript(projectId, job);
+    return;
+  }
+
+  if (fromStage === 'images') {
+    const sceneOverrides =
+      options?.sceneId && options.promptOverride
+        ? { [options.sceneId]: options.promptOverride }
+        : undefined;
+
+    await runStage(projectId, 'images', () =>
+      runFluxStage(projectId, {
+        skipExisting: true,
+        fluxStartAttempt: (options?.fluxStartAttempt ?? 0) + 2,
+        scenePromptOverrides: sceneOverrides,
+        thumbnailPromptOverride: options?.thumbnailPromptOverride,
+      }),
+    );
+    await job.updateProgress(70);
+    await runStage(projectId, 'audio', () => runTtsStage(projectId));
+    await job.updateProgress(90);
+    await finishRender(projectId);
+    await job.updateProgress(100);
+    return;
+  }
+
+  if (fromStage === 'audio') {
+    await runStage(projectId, 'audio', () =>
+      runTtsStage(projectId, {
+        voicePreset: options?.voicePreset as VoicePreset | undefined,
+      }),
+    );
+    await job.updateProgress(90);
+    await finishRender(projectId);
+    await job.updateProgress(100);
+    return;
+  }
+
+  if (fromStage === 'render') {
+    const result = await queueCloudRender(projectId, { force: true });
+    if (!result.ok) {
+      await markPipelineFailure(projectId, 'render', result.message);
+      throw new Error(result.message);
+    }
   }
 }
 
@@ -61,45 +189,20 @@ async function processVideoJob(job: Job<VideoJobData>): Promise<void> {
 
   await job.updateProgress(5);
 
-  const script = await runScriptStage(projectId);
-
+  await runStage(projectId, 'start', () => runScriptStage(projectId));
   await job.updateProgress(30);
-
-  const assets = await runFluxStage(projectId);
-
+  await runStage(projectId, 'images', () => runFluxStage(projectId, { skipExisting: false }));
   await job.updateProgress(70);
-
-  const narration = await runTtsStage(projectId);
-
+  await runStage(projectId, 'audio', () => runTtsStage(projectId));
   await job.updateProgress(90);
-
-  try {
-    await runCloudRenderStage(projectId);
-  } catch (err) {
-    const message = err instanceof Error ? err.message : 'Cloud render failed';
-
-    await prisma.project.update({
-      where: { id: projectId },
-      data: { status: 'waiting_for_renderer', errorMessage: message },
-    });
-
-    console.error(`[worker] cloud render failed for ${projectId}:`, message);
-    return;
-  }
-
+  await finishRender(projectId);
   await job.updateProgress(100);
 
-  console.log(
-    `[worker] pipeline complete for ${projectId}: "${script.title}" — ${assets.sceneKeys.length} images, audio ${narration.narrationKey}`,
-  );
+  console.log(`[worker] pipeline complete for ${projectId}`);
 }
 
-export function startPipelineWorker(): Worker<
-  VideoJobData | CloudRenderJobData | RegenerateThumbnailJobData | RegenerateSceneJobData
-> {
-  const worker = new Worker<
-    VideoJobData | CloudRenderJobData | RegenerateThumbnailJobData | RegenerateSceneJobData
-  >(
+export function startPipelineWorker(): Worker<WorkerJobData> {
+  const worker = new Worker<WorkerJobData>(
     VIDEO_QUEUE_NAME,
     async (job) => {
       try {
@@ -118,16 +221,26 @@ export function startPipelineWorker(): Worker<
           return;
         }
 
+        if (job.name === 'resume-pipeline') {
+          await processResumePipelineJob(job as Job<ResumePipelineJobData>);
+          return;
+        }
+
         await processVideoJob(job as Job<VideoJobData>);
       } catch (err) {
+        if (err instanceof PipelineStageError) {
+          throw err;
+        }
+
         const message = err instanceof Error ? err.message : 'Unknown pipeline error';
         const projectId = job.data.projectId;
 
-        if (job.name !== 'cloud-render' && job.name !== 'regenerate-thumbnail' && job.name !== 'regenerate-scene') {
-          await prisma.project.update({
-            where: { id: projectId },
-            data: { status: 'failed', errorMessage: message },
-          });
+        if (job.name === 'process') {
+          await markPipelineFailure(
+            projectId,
+            inferFailedStageFromError(message),
+            message,
+          );
         }
 
         throw err;

@@ -45,6 +45,7 @@ export async function regenerateThumbnail(projectId: string): Promise<{ thumbnai
 export async function regenerateScene(
   projectId: string,
   sceneId: string,
+  options?: { promptOverride?: string; fluxStartAttempt?: number },
 ): Promise<{ imageKeys: string[] }> {
   if (!r2Configured) {
     throw new Error('R2 not configured');
@@ -62,18 +63,27 @@ export async function regenerateScene(
   const script = project?.script ? parseProjectScript(project.script) : null;
   const scriptScene = script?.scenes[scene.order];
 
-  const prompts =
-    scriptScene?.imagePrompts ??
-    [
-      `${scene.prompt}, wide establishing shot`,
-      `${scene.prompt}, dramatic medium shot`,
-      `${scene.prompt}, intense close-up`,
-    ];
+  const prompts = options?.promptOverride
+    ? [
+        `${options.promptOverride}, wide establishing shot, family-friendly`,
+        `${options.promptOverride}, dramatic medium shot, soft lighting`,
+        `${options.promptOverride}, abstract cinematic close-up, safe for work`,
+      ]
+    : scriptScene?.imagePrompts ??
+      [
+        `${scene.prompt}, wide establishing shot`,
+        `${scene.prompt}, dramatic medium shot`,
+        `${scene.prompt}, intense close-up`,
+      ];
 
+  const startAttempt = options?.fluxStartAttempt ?? 2;
   const imageKeys: string[] = [];
 
   for (let variant = 0; variant < 3; variant += 1) {
-    const imageBuffer = await generateFluxImageWithRetry(prompts[variant] ?? scene.prompt);
+    const imageBuffer = await generateFluxImageWithRetry(prompts[variant] ?? scene.prompt, {
+      startAttempt,
+      maxAttempts: 7,
+    });
     const suffix = String.fromCharCode(97 + variant);
     const key = projectKey(
       projectId,

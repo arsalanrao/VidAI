@@ -28,4 +28,22 @@ export type RegenerateThumbnailJobData = {
 export type RegenerateSceneJobData = {
   projectId: string;
   sceneId: string;
+  promptOverride?: string;
+  fluxStartAttempt?: number;
+};
+
+export type ResumePipelineJobData = {
+  projectId: string;
+  fromStage: 'start' | 'script' | 'images' | 'audio' | 'render';
+  options?: {
+    youtubeUrl?: string;
+    userDirection?: string;
+    sceneId?: string;
+    promptOverride?: string;
+    thumbnailPromptOverride?: string;
+    voicePreset?: string;
+    fluxStartAttempt?: number;
+    extractMode?: 'default' | 'captions' | 'title_only';
+    fixRenderLowMemory?: boolean;
+  };
 };

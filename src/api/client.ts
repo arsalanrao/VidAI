@@ -146,10 +146,66 @@ export async function regenerateThumbnail(projectId: string): Promise<ActionResp
   });
 }
 
-export async function regenerateScene(projectId: string, sceneId: string): Promise<ActionResponse> {
-  return request<ActionResponse>(`/api/project/${projectId}/scenes/${sceneId}/regenerate`, {
+export async function retryStart(
+  projectId: string,
+  youtubeUrl?: string,
+): Promise<ActionResponse> {
+  return request<ActionResponse>(`/api/project/${projectId}/retry-start`, {
+    method: 'POST',
+    body: JSON.stringify({ youtubeUrl }),
+  });
+}
+
+export async function retryScript(
+  projectId: string,
+  userDirection?: string,
+  youtubeUrl?: string,
+): Promise<ActionResponse> {
+  return request<ActionResponse>(`/api/project/${projectId}/retry-script`, {
+    method: 'POST',
+    body: JSON.stringify({ userDirection, youtubeUrl }),
+  });
+}
+
+export async function retryImages(
+  projectId: string,
+  options?: {
+    sceneId?: string;
+    promptOverride?: string;
+    thumbnailPromptOverride?: string;
+  },
+): Promise<ActionResponse> {
+  return request<ActionResponse>(`/api/project/${projectId}/retry-images`, {
+    method: 'POST',
+    body: JSON.stringify(options ?? {}),
+  });
+}
+
+export async function retryAudio(
+  projectId: string,
+  voicePreset?: string,
+): Promise<ActionResponse> {
+  return request<ActionResponse>(`/api/project/${projectId}/retry-audio`, {
+    method: 'POST',
+    body: JSON.stringify({ voicePreset }),
+  });
+}
+
+export async function fixRender(projectId: string): Promise<ActionResponse> {
+  return request<ActionResponse>(`/api/project/${projectId}/fix-render`, {
     method: 'POST',
     body: '{}',
+  });
+}
+
+export async function regenerateScene(
+  projectId: string,
+  sceneId: string,
+  promptOverride?: string,
+): Promise<ActionResponse> {
+  return request<ActionResponse>(`/api/project/${projectId}/scenes/${sceneId}/regenerate`, {
+    method: 'POST',
+    body: JSON.stringify({ promptOverride }),
   });
 }
 

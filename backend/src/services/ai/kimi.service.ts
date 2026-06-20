@@ -42,7 +42,11 @@ Rules:
 - Total scene durations should roughly match a 30-59 second Short
 - Return ONLY the JSON object`;
 
-function buildUserPrompt(source: YouTubeSource, preferences?: ProjectPreferences): string {
+function buildUserPrompt(
+  source: YouTubeSource,
+  preferences?: ProjectPreferences,
+  userDirection?: string,
+): string {
   const trimmedTranscript =
     source.transcript.length > 12_000
       ? `${source.transcript.slice(0, 12_000)}…`
@@ -53,17 +57,21 @@ function buildUserPrompt(source: YouTubeSource, preferences?: ProjectPreferences
     ? `\nVISUAL THEME: ${visualThemeLabel(preferences.visualTheme)} — match tone, color palette, and scene imagery to this theme.`
     : '';
 
+  const directionLine = userDirection?.trim()
+    ? `\n\nUSER DIRECTION (must follow): ${userDirection.trim()}`
+    : '';
+
   if (sparseSource) {
     return `Create a brand-new viral YouTube Shorts package from this topic (no transcript was available):
 
-SOURCE TITLE: ${source.title}${themeLine}
+SOURCE TITLE: ${source.title}${themeLine}${directionLine}
 
 Return ONLY the JSON object. Invent a compelling hook, narration, and scenes based on the title/topic.`;
   }
 
   return `Rewrite this viral YouTube Short into a fresh original Shorts package.
 
-SOURCE TITLE: ${source.title}${themeLine}
+SOURCE TITLE: ${source.title}${themeLine}${directionLine}
 
 SOURCE TRANSCRIPT:
 ${trimmedTranscript}
@@ -278,8 +286,9 @@ export async function checkKimiConnection(): Promise<{ ok: boolean; message: str
 export async function generateKimiScript(
   source: YouTubeSource,
   preferences?: ProjectPreferences,
+  userDirection?: string,
 ): Promise<KimiScript> {
-  const userPrompt = buildUserPrompt(source, preferences);
+  const userPrompt = buildUserPrompt(source, preferences, userDirection);
   const messages = [
     { role: 'system', content: SYSTEM_PROMPT },
     { role: 'user', content: userPrompt },

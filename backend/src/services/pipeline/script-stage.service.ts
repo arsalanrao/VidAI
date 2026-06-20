@@ -25,7 +25,16 @@ function resolveSceneMotionPreset(
   return kimiPreset;
 }
 
-export async function runScriptStage(projectId: string): Promise<ProjectScript> {
+import {
+  getRecoveryMeta,
+  PipelineStageError,
+  type RecoveryMeta,
+} from './pipeline-recovery.service.js';
+
+export async function runScriptStage(
+  projectId: string,
+  options?: { userDirection?: string; extractMode?: RecoveryMeta['extractMode'] },
+): Promise<ProjectScript> {
   const project = await prisma.project.findUnique({ where: { id: projectId } });
 
   if (!project) {
@@ -33,8 +42,25 @@ export async function runScriptStage(projectId: string): Promise<ProjectScript> 
   }
 
   const preferences = readProjectPreferences(project);
-  const source = await extractYouTubeSource(project.youtubeUrl);
-  const script = await generateKimiScript(source, preferences);
+  const recovery = getRecoveryMeta(project.script);
+  const extractMode = options?.extractMode ?? recovery.extractMode ?? 'default';
+  const userDirection = options?.userDirection ?? recovery.userDirection;
+
+  let source;
+  try {
+    source = await extractYouTubeSource(project.youtubeUrl, { mode: extractMode });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'YouTube source extraction failed';
+    throw new PipelineStageError('start', message);
+  }
+
+  let script;
+  try {
+    script = await generateKimiScript(source, preferences, userDirection);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Script generation failed';
+    throw new PipelineStageError('script', message);
+  }
 
   const projectScript: ProjectScript & { preferences: typeof preferences } = {
     ...script,

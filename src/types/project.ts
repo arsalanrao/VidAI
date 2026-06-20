@@ -27,7 +27,19 @@ export type ProjectStatusResponse = {
   title: string | null;
   errorMessage: string | null;
   updatedAt: string;
+  youtubeUrl?: string;
+  failedStage?: PipelineFailedStage | null;
+  recoveryAttempt?: number;
+  completeness?: ProjectCompleteness;
+  scenes?: Array<{
+    id: string;
+    order: number;
+    prompt: string;
+    hasImage: boolean;
+  }>;
 };
+
+export type PipelineFailedStage = 'start' | 'script' | 'images' | 'audio' | 'render';
 
 export type SceneResult = {
   id: string;

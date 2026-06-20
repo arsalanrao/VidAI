@@ -1,40 +1,41 @@
 import { StyleSheet, Text, View } from 'react-native';
-import { PIPELINE_STEPS, stepIndexForStatus } from '../utils/pipeline';
-import type { ProjectStatus } from '../types/project';
+import {
+  DETAILED_PIPELINE_STEPS,
+  type PipelineFailedStage,
+  type StepVisualState,
+} from '../utils/pipeline';
 import { colors, spacing } from '../theme/colors';
 
 type Props = {
-  status: ProjectStatus;
+  stepStates: StepVisualState[];
+  failedStage?: PipelineFailedStage | null;
 };
 
-export function PipelineSteps({ status }: Props) {
-  const activeIndex = stepIndexForStatus(status);
-  const failed = status === 'failed';
-
+export function PipelineSteps({ stepStates, failedStage }: Props) {
   return (
     <View style={styles.wrap}>
-      {PIPELINE_STEPS.map((step, index) => {
-        const done = index < activeIndex || status === 'done';
-        const active = index === activeIndex && !failed;
-        const upcoming = index > activeIndex;
+      {DETAILED_PIPELINE_STEPS.map((step, index) => {
+        const state = stepStates[index] ?? 'pending';
+        const isFailed = state === 'failed' || failedStage === step.id;
 
         return (
           <View key={step.id} style={styles.row}>
             <View
               style={[
                 styles.dot,
-                done && styles.dotDone,
-                active && styles.dotActive,
-                failed && active && styles.dotFailed,
-                upcoming && styles.dotUpcoming,
+                state === 'done' && styles.dotDone,
+                state === 'active' && styles.dotActive,
+                isFailed && styles.dotFailed,
+                state === 'pending' && styles.dotUpcoming,
               ]}
             />
             <Text
               style={[
                 styles.label,
-                done && styles.labelDone,
-                active && styles.labelActive,
-                upcoming && styles.labelUpcoming,
+                state === 'done' && styles.labelDone,
+                state === 'active' && styles.labelActive,
+                isFailed && styles.labelFailed,
+                state === 'pending' && styles.labelUpcoming,
               ]}>
               {step.label}
             </Text>
@@ -83,6 +84,10 @@ const styles = StyleSheet.create({
   },
   labelActive: {
     color: colors.accentSoft,
+    fontWeight: '600',
+  },
+  labelFailed: {
+    color: colors.error,
     fontWeight: '600',
   },
   labelUpcoming: {

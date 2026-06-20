@@ -108,22 +108,39 @@ async function fetchTranscriptViaLibrary(videoId: string): Promise<string | null
   return null;
 }
 
-export async function extractYouTubeSource(youtubeUrl: string): Promise<YouTubeExtract> {
+export async function extractYouTubeSource(
+  youtubeUrl: string,
+  options?: { mode?: 'default' | 'captions' | 'title_only' },
+): Promise<YouTubeExtract> {
   const videoId = parseYouTubeVideoId(youtubeUrl);
 
   if (!videoId) {
     throw new Error('Invalid YouTube URL');
   }
 
-  const ytdlpResult = await extractViaYtDlp(youtubeUrl, videoId);
+  const mode = options?.mode ?? 'default';
 
-  if (ytdlpResult.ok) {
+  if (mode === 'title_only') {
+    const title = await fetchVideoTitle(youtubeUrl);
     return {
       videoId,
-      title: ytdlpResult.title,
-      transcript: ytdlpResult.transcript,
-      transcriptSource: ytdlpResult.source,
+      title,
+      transcript: `Create a viral YouTube Short inspired by this topic.\nVideo title: ${title}`,
+      transcriptSource: 'title',
     };
+  }
+
+  if (mode !== 'captions') {
+    const ytdlpResult = await extractViaYtDlp(youtubeUrl, videoId);
+
+    if (ytdlpResult.ok) {
+      return {
+        videoId,
+        title: ytdlpResult.title,
+        transcript: ytdlpResult.transcript,
+        transcriptSource: ytdlpResult.source,
+      };
+    }
   }
 
   const [title, timedText, libraryTranscript] = await Promise.all([

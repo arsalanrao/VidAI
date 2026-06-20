@@ -249,14 +249,15 @@ export async function generateFluxImage(prompt: string, seed = randomSeed()): Pr
 
 export async function generateFluxImageWithRetry(
   prompt: string,
-  options?: { maxAttempts?: number; seed?: number },
+  options?: { maxAttempts?: number; seed?: number; startAttempt?: number },
 ): Promise<Buffer> {
   const maxAttempts = options?.maxAttempts ?? FLUX_MAX_ATTEMPTS;
   let lastError: Error | undefined;
   let sizeIndex = 0;
 
   for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
-    const softened = softenPromptForFilter(prompt, attempt);
+    const softenLevel = (options?.startAttempt ?? 0) + attempt;
+    const softened = softenPromptForFilter(prompt, softenLevel);
     const seed = attempt === 0 && options?.seed !== undefined ? options.seed : randomSeed();
     const size = FLUX_FALLBACK_SIZES[Math.min(sizeIndex, FLUX_FALLBACK_SIZES.length - 1)]!;
 

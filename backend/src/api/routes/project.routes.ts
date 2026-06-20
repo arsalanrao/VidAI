@@ -5,6 +5,11 @@ import { resolveAssetUrl } from '../../services/pipeline/flux-stage.service.js';
 import { queueCloudRender } from '../../services/video/cloud-render-dispatch.service.js';
 import { computeCompleteness } from '../../services/project/completeness.service.js';
 import { deleteProject } from '../../services/project/delete-project.service.js';
+import {
+  getRecoveryMeta,
+  inferFailedStage,
+  queueResumePipeline,
+} from '../../services/pipeline/pipeline-recovery.service.js';
 import { projectPreferencesSchema } from '../../types/project-preferences.types.js';
 
 export async function registerProjectRoutes(app: FastifyInstance): Promise<void> {
@@ -85,6 +90,12 @@ export async function registerProjectRoutes(app: FastifyInstance): Promise<void>
         title: true,
         errorMessage: true,
         updatedAt: true,
+        youtubeUrl: true,
+        script: true,
+        thumbnail: true,
+        narrationUrl: true,
+        videoUrl: true,
+        scenes: { select: { id: true, order: true, prompt: true, imageUrl: true } },
       },
     });
 
@@ -92,8 +103,119 @@ export async function registerProjectRoutes(app: FastifyInstance): Promise<void>
       return reply.status(404).send({ error: 'Project not found' });
     }
 
-    return reply.send(project);
+    const completeness = computeCompleteness(project);
+    const failedStage = inferFailedStage(project);
+    const recovery = getRecoveryMeta(project.script);
+
+    return reply.send({
+      id: project.id,
+      status: project.status,
+      title: project.title,
+      errorMessage: project.errorMessage,
+      updatedAt: project.updatedAt,
+      youtubeUrl: project.youtubeUrl,
+      failedStage,
+      recoveryAttempt: recovery.recoveryAttempt ?? 0,
+      completeness,
+      scenes: project.scenes.map((scene) => ({
+        id: scene.id,
+        order: scene.order,
+        prompt: scene.prompt,
+        hasImage: Boolean(scene.imageUrl),
+      })),
+    });
   });
+
+  async function recoveryHandler(
+    request: FastifyRequest<{ Params: { id: string } }>,
+    reply: FastifyReply,
+    fromStage: 'start' | 'script' | 'images' | 'audio' | 'render',
+    extra?: Record<string, unknown>,
+  ) {
+    try {
+      const body = (request.body ?? {}) as {
+        youtubeUrl?: string;
+        userDirection?: string;
+        sceneId?: string;
+        promptOverride?: string;
+        thumbnailPromptOverride?: string;
+        voicePreset?: string;
+      };
+      const meta = getRecoveryMeta(
+        (
+          await prisma.project.findUnique({
+            where: { id: request.params.id },
+            select: { script: true },
+          })
+        )?.script,
+      );
+
+      const result = await queueResumePipeline(request.params.id, {
+        projectId: request.params.id,
+        fromStage,
+        options: {
+          youtubeUrl: body.youtubeUrl,
+          userDirection: body.userDirection,
+          sceneId: body.sceneId,
+          promptOverride: body.promptOverride,
+          thumbnailPromptOverride: body.thumbnailPromptOverride,
+          voicePreset: body.voicePreset,
+          fluxStartAttempt:
+            fromStage === 'images'
+              ? (meta.fluxStartAttempt ?? 0) + 2
+              : meta.fluxStartAttempt ?? meta.recoveryAttempt ?? 0,
+          ...extra,
+        },
+      });
+
+      return reply.status(202).send(result);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Recovery failed';
+      const code = message.includes('not found') ? 404 : message.includes('already') ? 409 : 503;
+      return reply.status(code).send({ ok: false, message });
+    }
+  }
+
+  app.post<{ Params: { id: string }; Body: { youtubeUrl?: string } }>(
+    '/api/project/:id/retry-start',
+    async (request, reply) => {
+      const meta = getRecoveryMeta(
+        (
+          await prisma.project.findUnique({
+            where: { id: request.params.id },
+            select: { script: true },
+          })
+        )?.script,
+      );
+      const modes = ['default', 'captions', 'title_only'] as const;
+      const nextMode = modes[Math.min((meta.recoveryAttempt ?? 0) + 1, modes.length - 1)];
+
+      return recoveryHandler(request, reply, 'start', { extractMode: nextMode });
+    },
+  );
+
+  app.post<{ Params: { id: string }; Body: { userDirection?: string; youtubeUrl?: string } }>(
+    '/api/project/:id/retry-script',
+    async (request, reply) => recoveryHandler(request, reply, 'script'),
+  );
+
+  app.post<{
+    Params: { id: string };
+    Body: { sceneId?: string; promptOverride?: string; thumbnailPromptOverride?: string };
+  }>('/api/project/:id/retry-images', async (request, reply) =>
+    recoveryHandler(request, reply, 'images'),
+  );
+
+  app.post<{ Params: { id: string }; Body: { voicePreset?: string } }>(
+    '/api/project/:id/retry-audio',
+    async (request, reply) => recoveryHandler(request, reply, 'audio'),
+  );
+
+  app.post<{ Params: { id: string } }>(
+    '/api/project/:id/fix-render',
+    async (request, reply) =>
+      recoveryHandler(request, reply, 'render', { fixRenderLowMemory: true }),
+  );
 
   async function dispatchRenderHandler(
     request: FastifyRequest<{ Params: { id: string }; Querystring: { force?: string } }>,
@@ -205,7 +327,10 @@ export async function registerProjectRoutes(app: FastifyInstance): Promise<void>
     },
   );
 
-  app.post<{ Params: { id: string; sceneId: string } }>(
+  app.post<{
+    Params: { id: string; sceneId: string };
+    Body: { promptOverride?: string };
+  }>(
     '/api/project/:id/scenes/:sceneId/regenerate',
     async (request, reply) => {
       const scene = await prisma.scene.findFirst({
@@ -218,7 +343,11 @@ export async function registerProjectRoutes(app: FastifyInstance): Promise<void>
 
       await videoQueue.add(
         'regenerate-scene',
-        { projectId: request.params.id, sceneId: scene.id },
+        {
+          projectId: request.params.id,
+          sceneId: scene.id,
+          promptOverride: request.body?.promptOverride,
+        },
         { jobId: `scene-${scene.id}-${Date.now()}`, removeOnComplete: true },
       );
 

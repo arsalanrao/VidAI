@@ -1,5 +1,5 @@
 import { prisma } from '../../db/client.js';
-import { generateFluxImageWithRetry } from '../ai/flux.service.js';
+import { generateFluxImageWithRetry, FLUX_MAX_ATTEMPTS } from '../ai/flux.service.js';
 import {
   getSignedObjectUrl,
   projectKey,
@@ -30,7 +30,17 @@ function sceneImagePrompts(sceneRecord: { prompt: string }, scriptScene?: SceneS
   ];
 }
 
-export async function runFluxStage(projectId: string): Promise<{
+import { getRecoveryMeta } from './pipeline-recovery.service.js';
+
+export async function runFluxStage(
+  projectId: string,
+  options?: {
+    skipExisting?: boolean;
+    fluxStartAttempt?: number;
+    scenePromptOverrides?: Record<string, string>;
+    thumbnailPromptOverride?: string;
+  },
+): Promise<{
   thumbnailKey: string;
   sceneKeys: string[];
 }> {
@@ -48,30 +58,56 @@ export async function runFluxStage(projectId: string): Promise<{
   }
 
   const script = parseProjectScript(project.script);
+  const recovery = getRecoveryMeta(project.script);
+  const fluxStartAttempt = options?.fluxStartAttempt ?? recovery.fluxStartAttempt ?? 0;
+  const skipExisting = options?.skipExisting ?? true;
 
   if (!project.scenes.length) {
     throw new Error('No scenes found — run script stage first');
   }
 
-  const thumbnailBuffer = await generateFluxImageWithRetry(script.thumbnailPrompt);
-  const thumbnailKey = projectKey(projectId, 'thumbnail.jpg');
+  let thumbnailKey = project.thumbnail ?? '';
 
-  await uploadObject({
-    key: thumbnailKey,
-    body: thumbnailBuffer,
-    contentType: 'image/jpeg',
-    cacheControl: 'public, max-age=31536000',
-  });
+  if (!thumbnailKey || !skipExisting || options?.thumbnailPromptOverride) {
+    const thumbPrompt = options?.thumbnailPromptOverride ?? script.thumbnailPrompt;
+    const thumbnailBuffer = await generateFluxImageWithRetry(thumbPrompt, {
+      startAttempt: fluxStartAttempt,
+      maxAttempts: FLUX_MAX_ATTEMPTS + fluxStartAttempt,
+    });
+    thumbnailKey = projectKey(projectId, 'thumbnail.jpg');
+
+    await uploadObject({
+      key: thumbnailKey,
+      body: thumbnailBuffer,
+      contentType: 'image/jpeg',
+      cacheControl: 'public, max-age=31536000',
+    });
+  }
 
   const sceneKeys: string[] = [];
 
   for (const [index, scene] of project.scenes.entries()) {
+    if (skipExisting && scene.imageUrl && !options?.scenePromptOverrides?.[scene.id]) {
+      sceneKeys.push(...parseSceneImageKeys(scene));
+      continue;
+    }
+
     const scriptScene = script.scenes[index];
-    const prompts = sceneImagePrompts(scene, scriptScene);
+    const overridePrompt = options?.scenePromptOverrides?.[scene.id];
+    const prompts = overridePrompt
+      ? [
+          `${overridePrompt}, wide establishing shot, cinematic framing`,
+          `${overridePrompt}, dramatic medium shot, depth of field`,
+          `${overridePrompt}, intense close-up, emotional detail`,
+        ]
+      : sceneImagePrompts(scene, scriptScene);
     const imageKeys: string[] = [];
 
     for (let variant = 0; variant < 3; variant += 1) {
-      const imageBuffer = await generateFluxImageWithRetry(prompts[variant] ?? prompts[0]!);
+      const imageBuffer = await generateFluxImageWithRetry(prompts[variant] ?? prompts[0]!, {
+        startAttempt: fluxStartAttempt,
+        maxAttempts: FLUX_MAX_ATTEMPTS + fluxStartAttempt,
+      });
       const suffix = String.fromCharCode(97 + variant);
       const key = projectKey(
         projectId,

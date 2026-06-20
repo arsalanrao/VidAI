@@ -3,7 +3,11 @@ import { generateNarrationAudio } from '../ai/tts.service.js';
 import { projectKey, uploadObject } from '../storage/r2.service.js';
 import { r2Configured } from '../../config/env.js';
 import type { ProjectScript } from '../../types/script.types.js';
-import { readProjectPreferences, voicePresetToTtsVoice } from '../../types/project-preferences.types.js';
+import {
+  readProjectPreferences,
+  voicePresetToTtsVoice,
+  type VoicePreset,
+} from '../../types/project-preferences.types.js';
 
 function parseProjectScript(script: unknown): ProjectScript {
   if (!script || typeof script !== 'object') {
@@ -13,7 +17,10 @@ function parseProjectScript(script: unknown): ProjectScript {
   return script as ProjectScript;
 }
 
-export async function runTtsStage(projectId: string): Promise<{ narrationKey: string }> {
+export async function runTtsStage(
+  projectId: string,
+  options?: { voicePreset?: VoicePreset },
+): Promise<{ narrationKey: string }> {
   if (!r2Configured) {
     throw new Error('R2 not configured — add R2 env vars to store narration audio');
   }
@@ -26,7 +33,8 @@ export async function runTtsStage(projectId: string): Promise<{ narrationKey: st
 
   const script = parseProjectScript(project.script);
   const preferences = readProjectPreferences(project);
-  const voiceConfig = voicePresetToTtsVoice(preferences.voicePreset);
+  const voicePreset = options?.voicePreset ?? preferences.voicePreset;
+  const voiceConfig = voicePresetToTtsVoice(voicePreset);
 
   if (!script.narration?.trim()) {
     throw new Error('Script has no narration text for TTS');
