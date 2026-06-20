@@ -1,4 +1,4 @@
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { prisma } from '../../db/client.js';
 import { videoQueue } from '../../queues/video.queue.js';
 import { resolveAssetUrl } from '../../services/pipeline/flux-stage.service.js';
@@ -46,7 +46,10 @@ export async function registerProjectRoutes(app: FastifyInstance): Promise<void>
     return reply.send(project);
   });
 
-  app.post<{ Params: { id: string } }>('/api/project/:id/dispatch-render', async (request, reply) => {
+  async function dispatchRenderHandler(
+    request: FastifyRequest<{ Params: { id: string } }>,
+    reply: FastifyReply,
+  ) {
     if (!pcRendererConfigured) {
       return reply.status(503).send({
         error: 'PC renderer not configured',
@@ -61,6 +64,12 @@ export async function registerProjectRoutes(app: FastifyInstance): Promise<void>
     }
 
     return reply.send(result);
+  }
+
+  app.route({
+    method: ['GET', 'POST'],
+    url: '/api/project/:id/dispatch-render',
+    handler: dispatchRenderHandler,
   });
 
   app.get<{ Params: { id: string } }>('/api/project/:id/result', async (request, reply) => {
