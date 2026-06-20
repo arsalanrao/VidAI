@@ -895,13 +895,15 @@ cd D:\git\apps\VidAiPro\ai-server
 
 **Goal:** Phone UI for non-developers.
 
-**Screens:**
-1. **Home** — start new project  
-2. **Paste URL** — enter YouTube link  
-3. **Progress** — spinner + steps  
-4. **Pick thumbnail** — choose 1 of 3 (if we generate 3)  
-5. **Preview** — watch video  
-6. **Upload** — send to YouTube  
+**Implemented in `src/`:**
+1. **Home** — API status + start new project  
+2. **CreateProject** — paste YouTube URL  
+3. **Progress** — pipeline steps + polling  
+4. **Thumbnail** — preview thumbnail while PC renders  
+5. **Preview** — watch final MP4  
+6. **Upload** — placeholder for Step 17 (YouTube OAuth)  
+
+**API URL:** edit `src/config/api.ts` if not using Render default.
 
 **Your job:** Run on Android emulator or real phone:
 ```powershell
@@ -910,10 +912,13 @@ npm install
 npm run android
 ```
 
-- [ ] App installs on phone/emulator
-- [ ] App talks to `api.yourdomain.com`
+For a physical device, enable USB debugging. Emulator needs Google APIs image with Play Store optional.
 
-**Tell Cursor:** *“Do Step 16 — mobile screens one at a time”*
+- [ ] App installs on phone/emulator
+- [ ] Home shows API Connected
+- [ ] Full flow: paste URL → progress → preview plays video
+
+**Tell Cursor:** *“Do Step 17 — YouTube OAuth and upload”*
 
 ---
 
@@ -1005,8 +1010,8 @@ Copy this to the top of your notes and update:
 
 ```
 Hosting path: Path B (Premium + Render + PC)
-Last completed step: Step 11 ✅ (TTS narration)
-Next step: Step 13 — PC ai-server (install venv + test SVD locally)
+Last completed step: Step 16 ✅ (mobile app screens)
+Next step: Step 17 — YouTube OAuth upload
 Blockers: none
 ```
 

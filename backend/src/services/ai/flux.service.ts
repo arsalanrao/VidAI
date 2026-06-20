@@ -3,10 +3,10 @@ import { env } from '../../config/env.js';
 // NVIDIA Build — https://build.nvidia.com/black-forest-labs/flux_2-klein-4b
 const FLUX_URL = 'https://ai.api.nvidia.com/v1/genai/black-forest-labs/flux.2-klein-4b';
 
-// Match NVIDIA docs sample (1024×1024). Vertical framing via prompt for Shorts.
 export const FLUX_WIDTH = 1024;
 export const FLUX_HEIGHT = 1024;
 export const FLUX_STEPS = 4;
+export const FLUX_MAX_ATTEMPTS = 5;
 
 type FluxArtifact = {
   base64?: string;
@@ -30,6 +30,40 @@ type FluxPayload = {
   steps: number;
 };
 
+export class FluxContentFilteredError extends Error {
+  finishReason: string;
+  seed: number;
+
+  constructor(finishReason: string, seed: number) {
+    super(`FLUX content filtered (${finishReason})`);
+    this.name = 'FluxContentFilteredError';
+    this.finishReason = finishReason;
+    this.seed = seed;
+  }
+}
+
+const BRAND_REPLACEMENTS: Array<[RegExp, string]> = [
+  [/marvel/gi, ''],
+  [/avengers?/gi, 'generic hero team'],
+  [/iron man/gi, 'hero in red and gold powered armor'],
+  [/captain america/gi, 'hero with shield'],
+  [/thor/gi, 'mythic warrior with hammer'],
+  [/hulk/gi, 'large green strong figure'],
+  [/spider-?man/gi, 'hero in red and blue suit'],
+  [/batman/gi, 'dark caped hero'],
+  [/superman/gi, 'flying caped hero'],
+  [/disney/gi, ''],
+  [/pixar/gi, ''],
+  [/star wars/gi, 'sci-fi space adventure'],
+  [/harry potter/gi, 'young wizard fantasy'],
+];
+
+const VIOLENT_TERMS =
+  /\b(blood|gore|kill|killed|murder|weapon|weapons|gun|guns|rifle|fight|fighting|violent|violence|defeat|punch|punching|attack|attacking|war|battle|explosion|explode|dead|death|dying|injury|wound|stab|shoot|shot)\b/gi;
+
+const SAFETY_SUFFIX =
+  'family-friendly, safe for work, no violence, no weapons, no blood, stylized cinematic digital art, no text';
+
 function ensureVerticalPrompt(prompt: string): string {
   const trimmed = prompt.trim();
   const lower = trimmed.toLowerCase();
@@ -39,6 +73,34 @@ function ensureVerticalPrompt(prompt: string): string {
   }
 
   return `${trimmed}, vertical 9:16 composition, no text, no watermark`;
+}
+
+/** Progressively soften prompts when NVIDIA CONTENT_FILTERED triggers. */
+export function softenPromptForFilter(prompt: string, attempt: number): string {
+  let result = prompt.trim();
+
+  for (const [pattern, replacement] of BRAND_REPLACEMENTS) {
+    result = result.replace(pattern, replacement);
+  }
+
+  if (attempt >= 1) {
+    result = result.replace(VIOLENT_TERMS, 'dramatic moment');
+  }
+
+  if (attempt >= 2) {
+    result = `${result}, ${SAFETY_SUFFIX}`;
+  }
+
+  if (attempt >= 3) {
+    const mood = result.split(/[,.]/)[0]?.trim().slice(0, 80) ?? 'cinematic scene';
+    result = `Vertical 9:16 cinematic b-roll illustration, ${mood}, soft dramatic lighting, abstract storytelling, ${SAFETY_SUFFIX}`;
+  }
+
+  if (attempt >= 4) {
+    result = `Vertical 9:16 abstract cinematic background, gradient lighting, minimal shapes, calm mood, ${SAFETY_SUFFIX}`;
+  }
+
+  return result.replace(/\s+/g, ' ').trim();
 }
 
 export function formatNvidiaError(data: unknown, status: number): string {
@@ -119,26 +181,80 @@ async function invokeFlux(payload: FluxPayload): Promise<Buffer> {
   }
 
   const artifact = data.artifacts?.[0];
+  const finishReason = artifact?.finishReason ?? 'UNKNOWN';
 
   if (!artifact?.base64) {
+    if (finishReason === 'CONTENT_FILTERED') {
+      throw new FluxContentFilteredError(finishReason, artifact?.seed ?? payload.seed);
+    }
+
     throw new Error(`FLUX returned no image — ${formatNvidiaError(data, response.status)}`);
   }
 
-  if (artifact.finishReason && artifact.finishReason !== 'SUCCESS') {
-    throw new Error(`FLUX generation failed: ${artifact.finishReason}`);
+  if (finishReason !== 'SUCCESS' && finishReason !== 'STOP') {
+    if (finishReason === 'CONTENT_FILTERED') {
+      throw new FluxContentFilteredError(finishReason, artifact.seed ?? payload.seed);
+    }
+
+    throw new Error(`FLUX generation failed: ${finishReason}`);
   }
 
   return Buffer.from(artifact.base64, 'base64');
 }
 
-export async function generateFluxImage(prompt: string, seed = 0): Promise<Buffer> {
-  return invokeFlux({
-    prompt: ensureVerticalPrompt(prompt),
-    width: FLUX_WIDTH,
-    height: FLUX_HEIGHT,
-    seed,
-    steps: FLUX_STEPS,
-  });
+function randomSeed(): number {
+  return Math.floor(Math.random() * 2_147_483_646) + 1;
+}
+
+function isRetryableFluxError(err: unknown): boolean {
+  if (err instanceof FluxContentFilteredError) {
+    return true;
+  }
+
+  if (err instanceof Error) {
+    return err.message.includes('CONTENT_FILTERED');
+  }
+
+  return false;
+}
+
+export async function generateFluxImage(prompt: string, seed = randomSeed()): Promise<Buffer> {
+  return generateFluxImageWithRetry(prompt, { maxAttempts: 1, seed });
+}
+
+export async function generateFluxImageWithRetry(
+  prompt: string,
+  options?: { maxAttempts?: number; seed?: number },
+): Promise<Buffer> {
+  const maxAttempts = options?.maxAttempts ?? FLUX_MAX_ATTEMPTS;
+  let lastError: Error | undefined;
+
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    const softened = softenPromptForFilter(prompt, attempt);
+    const seed = attempt === 0 && options?.seed !== undefined ? options.seed : randomSeed();
+
+    try {
+      return await invokeFlux({
+        prompt: ensureVerticalPrompt(softened),
+        width: FLUX_WIDTH,
+        height: FLUX_HEIGHT,
+        seed,
+        steps: FLUX_STEPS,
+      });
+    } catch (err) {
+      lastError = err instanceof Error ? err : new Error(String(err));
+
+      if (!isRetryableFluxError(err) || attempt >= maxAttempts - 1) {
+        throw lastError;
+      }
+
+      console.warn(
+        `[flux] CONTENT_FILTERED on attempt ${attempt + 1}/${maxAttempts}, retrying with softer prompt`,
+      );
+    }
+  }
+
+  throw lastError ?? new Error('FLUX generation failed after retries');
 }
 
 export async function checkFluxConnection(): Promise<{ ok: boolean; message: string }> {
@@ -148,10 +264,10 @@ export async function checkFluxConnection(): Promise<{ ok: boolean; message: str
 
   try {
     await invokeFlux({
-      prompt: 'a simple blue circle on white background, no text',
+      prompt: 'a simple blue circle on white background, no text, family-friendly',
       width: FLUX_WIDTH,
       height: FLUX_HEIGHT,
-      seed: 0,
+      seed: 42,
       steps: FLUX_STEPS,
     });
 

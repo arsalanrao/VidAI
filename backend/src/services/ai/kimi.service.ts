@@ -29,6 +29,8 @@ Rules:
 - 5-8 scenes total
 - Hook must land in the first 2 seconds
 - imagePrompt MUST include "vertical 9:16, no text"
+- imagePrompt and thumbnailPrompt must be family-friendly (SFW): no violence, weapons, blood, gore, or fighting
+- Do NOT use copyrighted character or franchise names (Marvel, Avengers, Disney, etc.) — describe generic visuals instead
 - needs_lip_sync: true ONLY for direct talking-head / face-to-camera scenes
 - Total scene durations should roughly match a 30-59 second Short
 - Return JSON only, no markdown fences`;

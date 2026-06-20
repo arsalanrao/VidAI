@@ -1,5 +1,5 @@
 import { prisma } from '../../db/client.js';
-import { generateFluxImage } from '../ai/flux.service.js';
+import { generateFluxImageWithRetry } from '../ai/flux.service.js';
 import {
   getSignedObjectUrl,
   projectKey,
@@ -39,7 +39,7 @@ export async function runFluxStage(projectId: string): Promise<{
     throw new Error('No scenes found — run script stage first');
   }
 
-  const thumbnailBuffer = await generateFluxImage(script.thumbnailPrompt);
+  const thumbnailBuffer = await generateFluxImageWithRetry(script.thumbnailPrompt);
   const thumbnailKey = projectKey(projectId, 'thumbnail.jpg');
 
   await uploadObject({
@@ -52,7 +52,7 @@ export async function runFluxStage(projectId: string): Promise<{
   const sceneKeys: string[] = [];
 
   for (const scene of project.scenes) {
-    const imageBuffer = await generateFluxImage(scene.prompt);
+    const imageBuffer = await generateFluxImageWithRetry(scene.prompt);
     const key = projectKey(projectId, 'scenes', `${String(scene.order + 1).padStart(2, '0')}.jpg`);
 
     await uploadObject({
