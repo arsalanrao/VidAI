@@ -42,4 +42,5 @@ $result = Invoke-RestMethod -Method POST `
     -Body $webhookBody
 
 $result | ConvertTo-Json -Depth 4
-Write-Host "`nDone — check: $RenderApi/api/project/$ProjectId/result" -ForegroundColor Green
+Write-Host ""
+Write-Host "Done - check: $RenderApi/api/project/$ProjectId/result" -ForegroundColor Green
