@@ -16,3 +16,7 @@ export const videoQueue = new Queue(VIDEO_QUEUE_NAME, {
 export type VideoJobData = {
   projectId: string;
 };
+
+export type RenderDispatchJobData = {
+  projectId: string;
+};

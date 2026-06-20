@@ -89,7 +89,7 @@ export async function checkPcHealth(): Promise<PcHealthResult> {
   }
 }
 
-export async function dispatchProjectRender(projectId: string): Promise<PcDispatchResult> {
+export async function validateProjectForRender(projectId: string): Promise<PcDispatchResult> {
   if (!pcRendererConfigured) {
     return {
       ok: false,
@@ -119,14 +119,27 @@ export async function dispatchProjectRender(projectId: string): Promise<PcDispat
     return { ok: false, message: 'Some scenes are missing images' };
   }
 
-  await prisma.project.update({
+  return { ok: true, message: 'Project is ready for PC render' };
+}
+
+export async function executeProjectRender(projectId: string): Promise<PcDispatchResult> {
+  const validation = await validateProjectForRender(projectId);
+  if (!validation.ok) {
+    return validation;
+  }
+
+  const project = await prisma.project.findUnique({
     where: { id: projectId },
-    data: { status: 'rendering', errorMessage: null },
+    include: { scenes: { orderBy: { order: 'asc' } } },
   });
+
+  if (!project) {
+    return { ok: false, message: `Project not found: ${projectId}` };
+  }
 
   const payload = {
     project_id: projectId,
-    narration_url: await getSignedObjectUrl(project.narrationUrl),
+    narration_url: await getSignedObjectUrl(project.narrationUrl!),
     scenes: await Promise.all(
       project.scenes.map(async (scene) => ({
         order: scene.order,
@@ -188,4 +201,19 @@ export async function dispatchProjectRender(projectId: string): Promise<PcDispat
 
     return { ok: false, message };
   }
+}
+
+/** @deprecated Use queue + executeProjectRender — kept for direct calls in tests */
+export async function dispatchProjectRender(projectId: string): Promise<PcDispatchResult> {
+  const validation = await validateProjectForRender(projectId);
+  if (!validation.ok) {
+    return validation;
+  }
+
+  await prisma.project.update({
+    where: { id: projectId },
+    data: { status: 'rendering', errorMessage: null },
+  });
+
+  return executeProjectRender(projectId);
 }

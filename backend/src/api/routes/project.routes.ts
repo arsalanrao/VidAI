@@ -2,7 +2,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { prisma } from '../../db/client.js';
 import { videoQueue } from '../../queues/video.queue.js';
 import { resolveAssetUrl } from '../../services/pipeline/flux-stage.service.js';
-import { dispatchProjectRender, pcRendererConfigured } from '../../services/pc/pc-render.service.js';
+import { pcRendererConfigured, validateProjectForRender } from '../../services/pc/pc-render.service.js';
 
 export async function registerProjectRoutes(app: FastifyInstance): Promise<void> {
   app.post<{ Body: { youtubeUrl?: string } }>('/api/project/create', async (request, reply) => {
@@ -57,13 +57,57 @@ export async function registerProjectRoutes(app: FastifyInstance): Promise<void>
       });
     }
 
-    const result = await dispatchProjectRender(request.params.id);
+    const projectId = request.params.id;
+    const validation = await validateProjectForRender(projectId);
 
-    if (!result.ok) {
-      return reply.status(result.message.includes('not found') ? 404 : 503).send(result);
+    if (!validation.ok) {
+      return reply.status(validation.message.includes('not found') ? 404 : 503).send(validation);
     }
 
-    return reply.send(result);
+    const project = await prisma.project.findUnique({
+      where: { id: projectId },
+      select: { status: true },
+    });
+
+    if (project?.status === 'rendering') {
+      return reply.status(202).send({
+        ok: true,
+        status: 'rendering',
+        message: 'Render already in progress — poll GET /api/project/:id/status',
+      });
+    }
+
+    await prisma.project.update({
+      where: { id: projectId },
+      data: { status: 'rendering', errorMessage: null },
+    });
+
+    try {
+      await videoQueue.add(
+        'dispatch-render',
+        { projectId },
+        {
+          jobId: `render-${projectId}`,
+          removeOnComplete: true,
+          removeOnFail: 100,
+        },
+      );
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to queue render job';
+      if (!message.toLowerCase().includes('job') || !message.toLowerCase().includes('exist')) {
+        await prisma.project.update({
+          where: { id: projectId },
+          data: { status: 'waiting_for_renderer', errorMessage: message },
+        });
+        return reply.status(503).send({ ok: false, message });
+      }
+    }
+
+    return reply.status(202).send({
+      ok: true,
+      status: 'rendering',
+      message: 'Render job queued on your PC — poll GET /api/project/:id/status (may take several minutes per scene)',
+    });
   }
 
   app.route({
