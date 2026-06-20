@@ -20,6 +20,8 @@ Output ONLY valid JSON matching this schema:
       "duration": 4,
       "narration": "string — line for this scene",
       "imagePrompt": "string — vertical 9:16, no text, cinematic",
+      "imagePrompts": ["string — 3 variants: wide, medium, close-up for the same scene"],
+      "motionPreset": "cinematic | horror | space | history | mystery | epic",
       "needs_lip_sync": false,
       "style": "b-roll"
     }

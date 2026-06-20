@@ -10,7 +10,7 @@ import { isYtDlpAvailable, getYtDlpVersion, ensureYtDlpPath } from './services/y
 import { checkKimiConnection } from './services/ai/kimi.service.js';
 import { checkFluxConnection } from './services/ai/flux.service.js';
 import { checkTtsConnection, listChatterboxVoices, listMagpieGrpcVoices, listMagpieVoices } from './services/ai/tts.service.js';
-import { checkPcHealth, pcRendererConfigured } from './services/pc/pc-render.service.js';
+import { checkFfmpegAvailable } from './services/video/ffmpeg.util.js';
 import { registerWebhookRoutes } from './api/routes/webhook.routes.js';
 import type { Worker } from 'bullmq';
 
@@ -141,15 +141,22 @@ async function buildApp() {
     }
   });
 
-  app.get('/health/pc', async (_req, reply) => {
-    const result = await checkPcHealth();
+  app.get('/health/ffmpeg', async (_req, reply) => {
+    const result = await checkFfmpegAvailable();
 
     if (!result.ok) {
-      return reply.status(result.configured ? 503 : 503).send(result);
+      return reply.status(503).send({ ok: false, ffmpeg: result.message });
     }
 
-    return result;
+    return { ok: true, ffmpeg: result.message };
   });
+
+  /** @deprecated PC rendering removed — cloud FFmpeg on Render is used instead */
+  app.get('/health/pc', async () => ({
+    ok: true,
+    deprecated: true,
+    message: 'PC renderer removed — video renders on Render via FFmpeg motion engine',
+  }));
 
   app.get('/health/moonshot', async (_req, reply) => {
     const result = await checkKimiConnection();

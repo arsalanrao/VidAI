@@ -2,8 +2,8 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { prisma } from '../../db/client.js';
 import { videoQueue } from '../../queues/video.queue.js';
 import { resolveAssetUrl } from '../../services/pipeline/flux-stage.service.js';
-import { pcRendererConfigured } from '../../services/pc/pc-render.service.js';
-import { queueProjectRender } from '../../services/pc/render-dispatch.service.js';
+import { queueCloudRender } from '../../services/video/cloud-render-dispatch.service.js';
+import { computeCompleteness } from '../../services/project/completeness.service.js';
 
 export async function registerProjectRoutes(app: FastifyInstance): Promise<void> {
   app.post<{ Body: { youtubeUrl?: string } }>('/api/project/create', async (request, reply) => {
@@ -25,6 +25,30 @@ export async function registerProjectRoutes(app: FastifyInstance): Promise<void>
     return reply.status(201).send({
       projectId: project.id,
       status: project.status,
+    });
+  });
+
+  app.get<{ Querystring: { limit?: string } }>('/api/projects', async (request, reply) => {
+    const limit = Math.min(Number(request.query?.limit ?? 50) || 50, 100);
+
+    const projects = await prisma.project.findMany({
+      orderBy: { updatedAt: 'desc' },
+      take: limit,
+      include: {
+        scenes: { select: { imageUrl: true } },
+      },
+    });
+
+    return reply.send({
+      projects: projects.map((project) => ({
+        id: project.id,
+        title: project.title,
+        status: project.status,
+        errorMessage: project.errorMessage,
+        updatedAt: project.updatedAt,
+        youtubeUrl: project.youtubeUrl,
+        completeness: computeCompleteness(project),
+      })),
     });
   });
 
@@ -51,23 +75,16 @@ export async function registerProjectRoutes(app: FastifyInstance): Promise<void>
     request: FastifyRequest<{ Params: { id: string }; Querystring: { force?: string } }>,
     reply: FastifyReply,
   ) {
-    if (!pcRendererConfigured) {
-      return reply.status(503).send({
-        error: 'PC renderer not configured',
-        hint: 'Set PC_SERVER_URL and PC_API_SECRET on Render',
-      });
-    }
-
-    const result = await queueProjectRender(request.params.id, {
+    const result = await queueCloudRender(request.params.id, {
       force: request.query?.force === '1',
     });
 
     if (!result.ok) {
       const code = result.message.includes('not found')
         ? 404
-        : result.pcOnline === false
-          ? 503
-          : 409;
+        : result.status === 'processing' || result.status === 'queued'
+          ? 409
+          : 503;
       return reply.status(code).send(result);
     }
 
@@ -83,20 +100,108 @@ export async function registerProjectRoutes(app: FastifyInstance): Promise<void>
   app.post<{ Params: { id: string } }>(
     '/api/project/:id/resume-render',
     async (request, reply) => {
-      if (!pcRendererConfigured) {
-        return reply.status(503).send({
-          ok: false,
-          message: 'PC renderer not configured on server',
-        });
-      }
-
-      const result = await queueProjectRender(request.params.id, { force: true });
+      const result = await queueCloudRender(request.params.id, { force: true });
 
       if (!result.ok) {
-        return reply.status(result.pcOnline === false ? 503 : 409).send(result);
+        return reply.status(409).send(result);
       }
 
       return reply.status(202).send(result);
+    },
+  );
+
+  app.post<{ Params: { id: string } }>(
+    '/api/project/:id/retry-pipeline',
+    async (request, reply) => {
+      const project = await prisma.project.findUnique({
+        where: { id: request.params.id },
+        select: { status: true },
+      });
+
+      if (!project) {
+        return reply.status(404).send({ error: 'Project not found' });
+      }
+
+      if (project.status === 'done') {
+        return reply.status(409).send({ error: 'Project already complete' });
+      }
+
+      if (['rendering', 'queued', 'processing'].includes(project.status)) {
+        return reply.status(409).send({
+          error: 'Pipeline already running',
+          status: project.status,
+        });
+      }
+
+      await prisma.project.update({
+        where: { id: request.params.id },
+        data: { status: 'queued', errorMessage: null },
+      });
+
+      await videoQueue.add(
+        'process',
+        { projectId: request.params.id },
+        { jobId: `process-${request.params.id}`, removeOnComplete: true },
+      );
+
+      return reply.status(202).send({
+        ok: true,
+        message: 'Pipeline retry queued',
+        status: 'queued',
+      });
+    },
+  );
+
+  app.post<{ Params: { id: string } }>(
+    '/api/project/:id/regenerate-thumbnail',
+    async (request, reply) => {
+      const project = await prisma.project.findUnique({
+        where: { id: request.params.id },
+        select: { id: true, script: true },
+      });
+
+      if (!project) {
+        return reply.status(404).send({ error: 'Project not found' });
+      }
+
+      if (!project.script) {
+        return reply.status(409).send({ error: 'Script not ready yet' });
+      }
+
+      await videoQueue.add(
+        'regenerate-thumbnail',
+        { projectId: project.id },
+        { jobId: `thumb-${project.id}-${Date.now()}`, removeOnComplete: true },
+      );
+
+      return reply.status(202).send({
+        ok: true,
+        message: 'Thumbnail regeneration queued',
+      });
+    },
+  );
+
+  app.post<{ Params: { id: string; sceneId: string } }>(
+    '/api/project/:id/scenes/:sceneId/regenerate',
+    async (request, reply) => {
+      const scene = await prisma.scene.findFirst({
+        where: { id: request.params.sceneId, projectId: request.params.id },
+      });
+
+      if (!scene) {
+        return reply.status(404).send({ error: 'Scene not found' });
+      }
+
+      await videoQueue.add(
+        'regenerate-scene',
+        { projectId: request.params.id, sceneId: scene.id },
+        { jobId: `scene-${scene.id}-${Date.now()}`, removeOnComplete: true },
+      );
+
+      return reply.status(202).send({
+        ok: true,
+        message: 'Scene regeneration queued (3 FLUX variants)',
+      });
     },
   );
 
@@ -117,21 +222,31 @@ export async function registerProjectRoutes(app: FastifyInstance): Promise<void>
     const videoUrl = await resolveAssetUrl(project.videoUrl);
     const scenes = await Promise.all(
       project.scenes.map(async (scene) => ({
-        ...scene,
+        id: scene.id,
+        order: scene.order,
+        prompt: scene.prompt,
+        duration: scene.duration,
         imageUrl: await resolveAssetUrl(scene.imageUrl),
+        complete: Boolean(scene.imageUrl),
       })),
     );
+
+    const script = project.script as Record<string, unknown> | null;
 
     return reply.send({
       id: project.id,
       status: project.status,
       title: project.title,
+      description: typeof script?.description === 'string' ? script.description : null,
+      hook: typeof script?.hook === 'string' ? script.hook : null,
+      tags: Array.isArray(script?.tags) ? script.tags : [],
       thumbnail,
       videoUrl,
       narrationUrl,
       script: project.script,
       scenes,
       errorMessage: project.errorMessage,
+      completeness: computeCompleteness(project),
     });
   });
 }

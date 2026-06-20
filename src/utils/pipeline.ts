@@ -19,7 +19,7 @@ export const PIPELINE_STEPS: PipelineStep[] = [
   },
   {
     id: 'render',
-    label: 'Video render (your PC)',
+    label: 'Video render (cloud FFmpeg)',
     statuses: ['rendering', 'rendered_local', 'waiting_for_renderer'],
   },
   {
@@ -51,6 +51,26 @@ export function canRetryPcRender(status: ProjectStatus): boolean {
   );
 }
 
+export function canRetryPipeline(status: ProjectStatus): boolean {
+  return status === 'failed';
+}
+
+export function isPcRenderError(errorMessage: string | null | undefined): boolean {
+  if (!errorMessage) {
+    return false;
+  }
+
+  const lower = errorMessage.toLowerCase();
+  return (
+    lower.includes('502') ||
+    lower.includes('503') ||
+    lower.includes('ffmpeg') ||
+    lower.includes('render failed') ||
+    lower.includes('waiting_for_renderer') ||
+    lower.includes('cloud render')
+  );
+}
+
 export function formatProjectError(errorMessage: string | null | undefined): string | null {
   if (!errorMessage) {
     return null;
@@ -64,8 +84,12 @@ export function formatProjectError(errorMessage: string | null | undefined): str
     return 'Image generation failed. Try a different source video or try again in a minute.';
   }
 
-  if (errorMessage.includes('waiting_for_renderer') || errorMessage.includes('PC renderer')) {
-    return 'Your PC renderer was offline. Tap Retry PC render after starting ai-server and the tunnel.';
+  if (errorMessage.includes('502') || errorMessage.includes('503')) {
+    return 'Cloud video render failed. Tap Retry video render — no PC required.';
+  }
+
+  if (errorMessage.includes('waiting_for_renderer') || errorMessage.includes('render failed')) {
+    return 'Cloud render failed. Tap Retry video render to re-run FFmpeg motion + captions on Render.';
   }
 
   return errorMessage.length > 220 ? `${errorMessage.slice(0, 220)}…` : errorMessage;
@@ -80,9 +104,9 @@ export function statusLabel(status: ProjectStatus): string {
     case 'narration_ready':
       return 'Narration ready — starting video render…';
     case 'rendering':
-      return 'Rendering video on your PC (several minutes)…';
+      return 'Rendering video on cloud (FFmpeg motion + captions)…';
     case 'waiting_for_renderer':
-      return 'Waiting for your PC renderer — turn on PC + tunnel';
+      return 'Render failed — tap Retry video render';
     case 'rendered_local':
       return 'Uploading final video…';
     case 'done':

@@ -3,8 +3,8 @@ import { env } from '../../config/env.js';
 // NVIDIA Build — https://build.nvidia.com/black-forest-labs/flux_2-klein-4b
 const FLUX_URL = 'https://ai.api.nvidia.com/v1/genai/black-forest-labs/flux.2-klein-4b';
 
-export const FLUX_WIDTH = 1024;
-export const FLUX_HEIGHT = 1024;
+export const FLUX_WIDTH = 1536;
+export const FLUX_HEIGHT = 2730;
 export const FLUX_STEPS = 4;
 export const FLUX_MAX_ATTEMPTS = 5;
 
@@ -72,7 +72,7 @@ function ensureVerticalPrompt(prompt: string): string {
     return trimmed;
   }
 
-  return `${trimmed}, vertical 9:16 composition, no text, no watermark`;
+  return `${trimmed}, vertical 9:16 cinematic photorealistic, dramatic lighting, film grain, high detail, 1536x2730 composition, no text, no watermark`;
 }
 
 /** Progressively soften prompts when NVIDIA CONTENT_FILTERED triggers. */

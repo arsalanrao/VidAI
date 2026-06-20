@@ -37,13 +37,15 @@ model Project {
 }
 
 model Scene {
-  id        String  @id @default(cuid())
-  projectId String
-  order     Int     @default(0)
-  prompt    String
-  imageUrl  String?
-  videoUrl  String?
-  duration  Int
+  id           String  @id @default(cuid())
+  projectId    String
+  order        Int     @default(0)
+  prompt       String
+  imageUrl     String?
+  imageUrls    Json?
+  videoUrl     String?
+  duration     Int
+  motionPreset String  @default("cinematic")
 
   project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
 

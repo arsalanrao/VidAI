@@ -80,7 +80,7 @@ export function ThumbnailScreen({ navigation, route }: Props) {
 
       {needsRetry ? (
         <PrimaryButton
-          label="Retry PC render"
+          label="Retry video render"
           loading={retrying}
           onPress={async () => {
             setRetrying(true);

@@ -37,6 +37,7 @@ export async function runScriptStage(projectId: string): Promise<ProjectScript> 
             order: index,
             prompt: scene.imagePrompt,
             duration: scene.duration,
+            motionPreset: scene.motionPreset,
           })),
         },
       },

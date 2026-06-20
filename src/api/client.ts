@@ -1,6 +1,8 @@
-import { API_BASE_URL } from '../config/api';
+import { API_BASE_URL, POLL_INTERVAL_MS } from '../config/api';
 import type {
+  ActionResponse,
   CreateProjectResponse,
+  ProjectListItem,
   ProjectResult,
   ProjectStatusResponse,
 } from '../types/project';
@@ -11,10 +13,7 @@ export type PcHealthResponse = {
   message: string;
 };
 
-export type ResumeRenderResponse = {
-  ok: boolean;
-  status?: string;
-  message: string;
+export type ResumeRenderResponse = ActionResponse & {
   pcOnline?: boolean;
 };
 
@@ -61,6 +60,11 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return body;
 }
 
+export async function listProjects(limit = 50): Promise<ProjectListItem[]> {
+  const body = await request<{ projects: ProjectListItem[] }>(`/api/projects?limit=${limit}`);
+  return body.projects;
+}
+
 export async function createProject(youtubeUrl: string): Promise<CreateProjectResponse> {
   return request<CreateProjectResponse>('/api/project/create', {
     method: 'POST',
@@ -95,9 +99,29 @@ export async function checkPcRendererHealth(): Promise<PcHealthResponse> {
   }
 }
 
-/** Resume PC video render only — does not re-run script, images, or narration. */
 export async function resumeProjectRender(projectId: string): Promise<ResumeRenderResponse> {
   return request<ResumeRenderResponse>(`/api/project/${projectId}/resume-render`, {
+    method: 'POST',
+    body: '{}',
+  });
+}
+
+export async function retryPipeline(projectId: string): Promise<ActionResponse> {
+  return request<ActionResponse>(`/api/project/${projectId}/retry-pipeline`, {
+    method: 'POST',
+    body: '{}',
+  });
+}
+
+export async function regenerateThumbnail(projectId: string): Promise<ActionResponse> {
+  return request<ActionResponse>(`/api/project/${projectId}/regenerate-thumbnail`, {
+    method: 'POST',
+    body: '{}',
+  });
+}
+
+export async function regenerateScene(projectId: string, sceneId: string): Promise<ActionResponse> {
+  return request<ActionResponse>(`/api/project/${projectId}/scenes/${sceneId}/regenerate`, {
     method: 'POST',
     body: '{}',
   });

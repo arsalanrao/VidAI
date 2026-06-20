@@ -91,7 +91,7 @@ export function PreviewScreen({ navigation, route }: Props) {
           <View style={styles.pendingBox}>
             <Text style={styles.pendingText}>
               {stillRendering
-                ? 'Video will appear here when PC render finishes and uploads to cloud.'
+                ? 'Video will appear here when cloud FFmpeg render finishes.'
                 : 'No video URL yet.'}
             </Text>
           </View>

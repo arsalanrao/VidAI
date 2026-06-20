@@ -2,8 +2,6 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import {
-  checkPcRendererHealth,
-  getProjectResult,
   getProjectStatus,
   resumeProjectRender,
 } from '../api/client';
@@ -11,6 +9,7 @@ import { PipelineSteps } from '../components/PipelineSteps';
 import { PrimaryButton } from '../components/PrimaryButton';
 import { ScreenContainer } from '../components/ScreenContainer';
 import { POLL_INTERVAL_MS } from '../config/api';
+import { useAutoRetryOnError } from '../hooks/useAutoRetryOnError';
 import type { RootStackParamList } from '../navigation/types';
 import type { ProjectStatus, ProjectStatusResponse } from '../types/project';
 import {
@@ -32,18 +31,7 @@ export function ProgressScreen({ navigation, route }: Props) {
   const [retrying, setRetrying] = useState(false);
 
   const handleDone = useCallback(async () => {
-    const result = await getProjectResult(projectId);
-
-    if (result.thumbnail) {
-      navigation.replace('Thumbnail', {
-        projectId,
-        thumbnailUrl: result.thumbnail,
-        title: result.title,
-      });
-      return;
-    }
-
-    navigation.replace('Preview', { projectId });
+    navigation.replace('ProjectDetail', { projectId });
   }, [navigation, projectId]);
 
   const pollOnce = useCallback(async () => {
@@ -61,19 +49,20 @@ export function ProgressScreen({ navigation, route }: Props) {
     }
 
     if (isThumbnailReady(next.status) && next.status === 'narration_ready') {
-      const result = await getProjectResult(projectId);
-      if (result.thumbnail) {
-        navigation.replace('Thumbnail', {
-          projectId,
-          thumbnailUrl: result.thumbnail,
-          title: result.title,
-        });
-        return false;
-      }
+      navigation.replace('ProjectDetail', { projectId });
+      return false;
     }
 
     return true;
   }, [projectId, handleDone, navigation]);
+
+  useAutoRetryOnError({
+    projectId,
+    status: status?.status ?? 'queued',
+    errorMessage: status?.errorMessage,
+    onRetryMessage: setRetryMessage,
+    onReload: pollOnce,
+  });
 
   useEffect(() => {
     let cancelled = false;
@@ -113,15 +102,6 @@ export function ProgressScreen({ navigation, route }: Props) {
     setRetryMessage(null);
 
     try {
-      const pcHealth = await checkPcRendererHealth();
-      if (!pcHealth.ok) {
-        setRetryMessage(
-          pcHealth.message ||
-            'PC renderer offline — start uvicorn + Cloudflare tunnel on your PC first.',
-        );
-        return;
-      }
-
       const result = await resumeProjectRender(projectId);
 
       if (!result.ok) {
@@ -178,8 +158,7 @@ export function ProgressScreen({ navigation, route }: Props) {
       {showRetry ? (
         <View style={styles.hintBox}>
           <Text style={styles.hintText}>
-            Script, images, and narration are already saved. Retry only resumes PC video render —
-            finished scenes on your PC are reused.
+            Script, images, and narration are already saved. Retry re-runs cloud FFmpeg motion render.
           </Text>
         </View>
       ) : null}
@@ -188,9 +167,15 @@ export function ProgressScreen({ navigation, route }: Props) {
         {showRetry ? (
           <>
             <PrimaryButton
-              label="Retry PC render"
+              label="Retry video render"
               loading={retrying}
               onPress={handleRetryPcRender}
+            />
+            <View style={styles.footerGap} />
+            <PrimaryButton
+              label="View project details"
+              variant="secondary"
+              onPress={() => navigation.navigate('ProjectDetail', { projectId })}
             />
             <View style={styles.footerGap} />
             <PrimaryButton

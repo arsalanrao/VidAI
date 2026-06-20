@@ -51,10 +51,6 @@ services:
         value: Chatterbox-Multilingual.en-US.Male
       - key: CHATTERBOX_GRPC_HOST
         value: grpc.nvcf.nvidia.com:443
-      - key: PC_SERVER_URL
-        sync: false
-      - key: PC_API_SECRET
-        sync: false
       - key: API_PUBLIC_URL
         value: https://vidai-nw8e.onrender.com
       - key: R2_ACCOUNT_ID

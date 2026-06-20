@@ -17,6 +17,15 @@ export type VideoJobData = {
   projectId: string;
 };
 
-export type RenderDispatchJobData = {
+export type CloudRenderJobData = {
   projectId: string;
+};
+
+export type RegenerateThumbnailJobData = {
+  projectId: string;
+};
+
+export type RegenerateSceneJobData = {
+  projectId: string;
+  sceneId: string;
 };

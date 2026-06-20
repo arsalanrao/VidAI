@@ -6,7 +6,7 @@ import {
   uploadObject,
 } from '../storage/r2.service.js';
 import { r2Configured } from '../../config/env.js';
-import type { ProjectScript } from '../../types/script.types.js';
+import type { ProjectScript, SceneScript } from '../../types/script.types.js';
 
 function parseProjectScript(script: unknown): ProjectScript {
   if (!script || typeof script !== 'object') {
@@ -14,6 +14,20 @@ function parseProjectScript(script: unknown): ProjectScript {
   }
 
   return script as ProjectScript;
+}
+
+function sceneImagePrompts(sceneRecord: { prompt: string }, scriptScene?: SceneScript): string[] {
+  if (scriptScene?.imagePrompts?.length) {
+    return scriptScene.imagePrompts.slice(0, 3);
+  }
+
+  const base = sceneRecord.prompt.trim();
+
+  return [
+    `${base}, wide establishing shot, cinematic framing`,
+    `${base}, dramatic medium shot, depth of field`,
+    `${base}, intense close-up, emotional detail`,
+  ];
 }
 
 export async function runFluxStage(projectId: string): Promise<{
@@ -51,22 +65,37 @@ export async function runFluxStage(projectId: string): Promise<{
 
   const sceneKeys: string[] = [];
 
-  for (const scene of project.scenes) {
-    const imageBuffer = await generateFluxImageWithRetry(scene.prompt);
-    const key = projectKey(projectId, 'scenes', `${String(scene.order + 1).padStart(2, '0')}.jpg`);
+  for (const [index, scene] of project.scenes.entries()) {
+    const scriptScene = script.scenes[index];
+    const prompts = sceneImagePrompts(scene, scriptScene);
+    const imageKeys: string[] = [];
 
-    await uploadObject({
-      key,
-      body: imageBuffer,
-      contentType: 'image/jpeg',
-      cacheControl: 'public, max-age=31536000',
-    });
+    for (let variant = 0; variant < 3; variant += 1) {
+      const imageBuffer = await generateFluxImageWithRetry(prompts[variant] ?? prompts[0]!);
+      const suffix = String.fromCharCode(97 + variant);
+      const key = projectKey(
+        projectId,
+        'scenes',
+        `${String(scene.order + 1).padStart(2, '0')}${suffix}.jpg`,
+      );
 
-    sceneKeys.push(key);
+      await uploadObject({
+        key,
+        body: imageBuffer,
+        contentType: 'image/jpeg',
+        cacheControl: 'public, max-age=31536000',
+      });
+
+      imageKeys.push(key);
+      sceneKeys.push(key);
+    }
 
     await prisma.scene.update({
       where: { id: scene.id },
-      data: { imageUrl: key },
+      data: {
+        imageUrl: imageKeys[0],
+        imageUrls: imageKeys,
+      },
     });
   }
 
@@ -96,4 +125,19 @@ export async function resolveAssetUrl(stored: string | null | undefined): Promis
   }
 
   return getSignedObjectUrl(stored);
+}
+
+export function parseSceneImageKeys(scene: {
+  imageUrl: string | null;
+  imageUrls: unknown;
+}): string[] {
+  if (Array.isArray(scene.imageUrls)) {
+    return scene.imageUrls.filter((key): key is string => typeof key === 'string' && key.length > 0);
+  }
+
+  if (scene.imageUrl) {
+    return [scene.imageUrl];
+  }
+
+  return [];
 }
