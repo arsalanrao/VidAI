@@ -2,7 +2,8 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { prisma } from '../../db/client.js';
 import { videoQueue } from '../../queues/video.queue.js';
 import { resolveAssetUrl } from '../../services/pipeline/flux-stage.service.js';
-import { pcRendererConfigured, validateProjectForRender } from '../../services/pc/pc-render.service.js';
+import { pcRendererConfigured } from '../../services/pc/pc-render.service.js';
+import { queueProjectRender } from '../../services/pc/render-dispatch.service.js';
 
 export async function registerProjectRoutes(app: FastifyInstance): Promise<void> {
   app.post<{ Body: { youtubeUrl?: string } }>('/api/project/create', async (request, reply) => {
@@ -57,64 +58,20 @@ export async function registerProjectRoutes(app: FastifyInstance): Promise<void>
       });
     }
 
-    const projectId = request.params.id;
-    const validation = await validateProjectForRender(projectId);
-
-    if (!validation.ok) {
-      return reply.status(validation.message.includes('not found') ? 404 : 503).send(validation);
-    }
-
-    const project = await prisma.project.findUnique({
-      where: { id: projectId },
-      select: { status: true },
+    const result = await queueProjectRender(request.params.id, {
+      force: request.query?.force === '1',
     });
 
-    if (project?.status === 'rendering' && request.query?.force !== '1') {
-      return reply.status(202).send({
-        ok: true,
-        status: 'rendering',
-        message: 'Render already in progress — poll GET /api/project/:id/status (add ?force=1 to re-queue)',
-      });
+    if (!result.ok) {
+      const code = result.message.includes('not found')
+        ? 404
+        : result.pcOnline === false
+          ? 503
+          : 409;
+      return reply.status(code).send(result);
     }
 
-    if (project?.status === 'done') {
-      return reply.status(409).send({
-        ok: false,
-        message: 'Project already complete',
-      });
-    }
-
-    await prisma.project.update({
-      where: { id: projectId },
-      data: { status: 'rendering', errorMessage: null },
-    });
-
-    try {
-      await videoQueue.add(
-        'dispatch-render',
-        { projectId },
-        {
-          jobId: `render-${projectId}`,
-          removeOnComplete: true,
-          removeOnFail: 100,
-        },
-      );
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to queue render job';
-      if (!message.toLowerCase().includes('job') || !message.toLowerCase().includes('exist')) {
-        await prisma.project.update({
-          where: { id: projectId },
-          data: { status: 'waiting_for_renderer', errorMessage: message },
-        });
-        return reply.status(503).send({ ok: false, message });
-      }
-    }
-
-    return reply.status(202).send({
-      ok: true,
-      status: 'rendering',
-      message: 'Render job queued on your PC — poll GET /api/project/:id/status (may take several minutes per scene)',
-    });
+    return reply.status(202).send(result);
   }
 
   app.route({
@@ -122,6 +79,26 @@ export async function registerProjectRoutes(app: FastifyInstance): Promise<void>
     url: '/api/project/:id/dispatch-render',
     handler: dispatchRenderHandler,
   });
+
+  app.post<{ Params: { id: string } }>(
+    '/api/project/:id/resume-render',
+    async (request, reply) => {
+      if (!pcRendererConfigured) {
+        return reply.status(503).send({
+          ok: false,
+          message: 'PC renderer not configured on server',
+        });
+      }
+
+      const result = await queueProjectRender(request.params.id, { force: true });
+
+      if (!result.ok) {
+        return reply.status(result.pcOnline === false ? 503 : 409).send(result);
+      }
+
+      return reply.status(202).send(result);
+    },
+  );
 
   app.get<{ Params: { id: string } }>('/api/project/:id/result', async (request, reply) => {
     const project = await prisma.project.findUnique({

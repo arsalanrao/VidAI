@@ -15,6 +15,9 @@ function Get-CloudflaredPath {
     $cmd = Get-Command cloudflared -ErrorAction SilentlyContinue
     if ($cmd) { return $cmd.Source }
 
+    $local = Join-Path $PSScriptRoot "cloudflared.exe"
+    if (Test-Path $local) { return $local }
+
     $candidates = @(
         "${env:ProgramFiles}\cloudflared\cloudflared.exe",
         "${env:ProgramFiles(x86)}\cloudflared\cloudflared.exe"
@@ -24,7 +27,7 @@ function Get-CloudflaredPath {
         if (Test-Path $path) { return $path }
     }
 
-    throw "cloudflared not found. Run .\install-cloudflared.ps1 first, then reopen PowerShell."
+    throw "cloudflared not found. Run .\install-cloudflared.ps1 or download cloudflared.exe into ai-server/."
 }
 
 $cloudflared = Get-CloudflaredPath

@@ -11,13 +11,27 @@ import { videoQueue } from '../queues/video.queue.js';
 async function processRenderDispatchJob(job: Job<RenderDispatchJobData>): Promise<void> {
   const { projectId } = job.data;
 
-  const result = await executeProjectRender(projectId);
+  try {
+    const result = await executeProjectRender(projectId);
 
-  if (!result.ok) {
-    throw new Error(result.message);
+    if (!result.ok) {
+      throw new Error(result.message);
+    }
+
+    console.log(`[worker] PC render finished for ${projectId}`);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'PC render failed';
+
+    await prisma.project.update({
+      where: { id: projectId },
+      data: {
+        status: 'waiting_for_renderer',
+        errorMessage: message,
+      },
+    });
+
+    throw err;
   }
-
-  console.log(`[worker] PC render finished for ${projectId}`);
 }
 
 async function processVideoJob(job: Job<VideoJobData>): Promise<void> {

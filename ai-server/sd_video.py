@@ -43,6 +43,20 @@ def _resolve_hf_token(explicit: str | None) -> str:
     return token
 
 
+def _reset_pipeline() -> None:
+    global _pipeline, _pipeline_model_id
+
+    _pipeline = None
+    _pipeline_model_id = None
+
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+        try:
+            torch.cuda.synchronize()
+        except Exception:
+            pass
+
+
 def _get_pipeline(model_id: str, hf_token: str | None = None):
     global _pipeline, _pipeline_model_id
 
@@ -206,21 +220,35 @@ def image_to_video(
         height,
     )
 
-    try:
-        result = pipe(
-            image,
-            num_frames=num_frames,
-            decode_chunk_size=decode_chunk_size,
-            motion_bucket_id=motion_bucket_id,
-            noise_aug_strength=noise_aug_strength,
-            generator=generator,
-        )
-        frames = result.frames[0]
-        logger.info("SVD inference done, exporting %d frames to MP4", len(frames))
-        _export_frames_to_mp4(frames, output_path, fps)
-    finally:
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
+    cuda_retry = False
+
+    while True:
+        try:
+            result = pipe(
+                image,
+                num_frames=num_frames,
+                decode_chunk_size=decode_chunk_size,
+                motion_bucket_id=motion_bucket_id,
+                noise_aug_strength=noise_aug_strength,
+                generator=generator,
+            )
+            frames = result.frames[0]
+            logger.info("SVD inference done, exporting %d frames to MP4", len(frames))
+            _export_frames_to_mp4(frames, output_path, fps)
+            break
+        except RuntimeError as exc:
+            message = str(exc)
+            is_cuda = "CUDA" in message or "cuda" in message
+            if is_cuda and not cuda_retry:
+                logger.warning("CUDA error during SVD — reloading model and retrying once: %s", message)
+                _reset_pipeline()
+                pipe = _get_pipeline(model_id, hf_token)
+                cuda_retry = True
+                continue
+            raise
+        finally:
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
 
     return output_path
 

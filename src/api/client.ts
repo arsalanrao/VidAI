@@ -5,6 +5,19 @@ import type {
   ProjectStatusResponse,
 } from '../types/project';
 
+export type PcHealthResponse = {
+  ok: boolean;
+  configured?: boolean;
+  message: string;
+};
+
+export type ResumeRenderResponse = {
+  ok: boolean;
+  status?: string;
+  message: string;
+  pcOnline?: boolean;
+};
+
 class ApiError extends Error {
   status: number;
 
@@ -41,10 +54,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const body = await parseJson<T & { error?: string; message?: string }>(response);
 
   if (!response.ok) {
-    const message =
-      body.error ??
-      body.message ??
-      `Request failed (${response.status})`;
+    const message = body.error ?? body.message ?? `Request failed (${response.status})`;
     throw new ApiError(response.status, message);
   }
 
@@ -74,6 +84,23 @@ export async function checkApiHealth(): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+export async function checkPcRendererHealth(): Promise<PcHealthResponse> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/health/pc`);
+    return (await response.json()) as PcHealthResponse;
+  } catch {
+    return { ok: false, message: 'Could not reach API health check' };
+  }
+}
+
+/** Resume PC video render only — does not re-run script, images, or narration. */
+export async function resumeProjectRender(projectId: string): Promise<ResumeRenderResponse> {
+  return request<ResumeRenderResponse>(`/api/project/${projectId}/resume-render`, {
+    method: 'POST',
+    body: '{}',
+  });
 }
 
 export { ApiError };

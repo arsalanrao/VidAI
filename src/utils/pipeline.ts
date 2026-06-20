@@ -43,6 +43,14 @@ export function stepIndexForStatus(status: ProjectStatus): number {
   return 0;
 }
 
+export function canRetryPcRender(status: ProjectStatus): boolean {
+  return (
+    status === 'waiting_for_renderer' ||
+    status === 'rendering' ||
+    status === 'rendered_local'
+  );
+}
+
 export function formatProjectError(errorMessage: string | null | undefined): string | null {
   if (!errorMessage) {
     return null;
@@ -56,8 +64,8 @@ export function formatProjectError(errorMessage: string | null | undefined): str
     return 'Image generation failed. Try a different source video or try again in a minute.';
   }
 
-  if (errorMessage.includes('waiting_for_renderer') || errorMessage.includes('PC')) {
-    return 'Your PC renderer was offline. Start ai-server and the Cloudflare tunnel, then try again.';
+  if (errorMessage.includes('waiting_for_renderer') || errorMessage.includes('PC renderer')) {
+    return 'Your PC renderer was offline. Tap Retry PC render after starting ai-server and the tunnel.';
   }
 
   return errorMessage.length > 220 ? `${errorMessage.slice(0, 220)}…` : errorMessage;

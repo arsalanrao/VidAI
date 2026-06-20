@@ -38,6 +38,8 @@ local.properties
 ai-server/venv/
 ai-server/venv312/
 ai-server/outputs/
+ai-server/cloudflared.exe
+ai-server/.pc-tunnel-url
 ai-server/__pycache__/
 ai-server/.env
 ai-server/.pytest_cache/

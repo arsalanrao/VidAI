@@ -1,14 +1,20 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
-import { getProjectResult, getProjectStatus } from '../api/client';
+import {
+  checkPcRendererHealth,
+  getProjectResult,
+  getProjectStatus,
+  resumeProjectRender,
+} from '../api/client';
 import { PipelineSteps } from '../components/PipelineSteps';
 import { PrimaryButton } from '../components/PrimaryButton';
 import { ScreenContainer } from '../components/ScreenContainer';
 import { POLL_INTERVAL_MS } from '../config/api';
 import type { RootStackParamList } from '../navigation/types';
-import type { ProjectStatusResponse } from '../types/project';
+import type { ProjectStatus, ProjectStatusResponse } from '../types/project';
 import {
+  canRetryPcRender,
   formatProjectError,
   isTerminalStatus,
   isThumbnailReady,
@@ -22,6 +28,8 @@ export function ProgressScreen({ navigation, route }: Props) {
   const { projectId } = route.params;
   const [status, setStatus] = useState<ProjectStatusResponse | null>(null);
   const [pollError, setPollError] = useState<string | null>(null);
+  const [retryMessage, setRetryMessage] = useState<string | null>(null);
+  const [retrying, setRetrying] = useState(false);
 
   const handleDone = useCallback(async () => {
     const result = await getProjectResult(projectId);
@@ -38,40 +46,44 @@ export function ProgressScreen({ navigation, route }: Props) {
     navigation.replace('Preview', { projectId });
   }, [navigation, projectId]);
 
+  const pollOnce = useCallback(async () => {
+    const next = await getProjectStatus(projectId);
+    setStatus(next);
+    setPollError(null);
+
+    if (next.status === 'done') {
+      await handleDone();
+      return false;
+    }
+
+    if (next.status === 'failed') {
+      return false;
+    }
+
+    if (isThumbnailReady(next.status) && next.status === 'narration_ready') {
+      const result = await getProjectResult(projectId);
+      if (result.thumbnail) {
+        navigation.replace('Thumbnail', {
+          projectId,
+          thumbnailUrl: result.thumbnail,
+          title: result.title,
+        });
+        return false;
+      }
+    }
+
+    return true;
+  }, [projectId, handleDone, navigation]);
+
   useEffect(() => {
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
 
     async function poll() {
       try {
-        const next = await getProjectStatus(projectId);
-
-        if (cancelled) {
+        const shouldContinue = await pollOnce();
+        if (cancelled || !shouldContinue) {
           return;
-        }
-
-        setStatus(next);
-        setPollError(null);
-
-        if (next.status === 'done') {
-          await handleDone();
-          return;
-        }
-
-        if (next.status === 'failed') {
-          return;
-        }
-
-        if (isThumbnailReady(next.status) && next.status === 'narration_ready') {
-          const result = await getProjectResult(projectId);
-          if (!cancelled && result.thumbnail) {
-            navigation.replace('Thumbnail', {
-              projectId,
-              thumbnailUrl: result.thumbnail,
-              title: result.title,
-            });
-            return;
-          }
         }
 
         timer = setTimeout(poll, POLL_INTERVAL_MS);
@@ -94,9 +106,45 @@ export function ProgressScreen({ navigation, route }: Props) {
         clearTimeout(timer);
       }
     };
-  }, [projectId, handleDone, navigation]);
+  }, [pollOnce]);
+
+  const handleRetryPcRender = async () => {
+    setRetrying(true);
+    setRetryMessage(null);
+
+    try {
+      const pcHealth = await checkPcRendererHealth();
+      if (!pcHealth.ok) {
+        setRetryMessage(
+          pcHealth.message ||
+            'PC renderer offline — start uvicorn + Cloudflare tunnel on your PC first.',
+        );
+        return;
+      }
+
+      const result = await resumeProjectRender(projectId);
+
+      if (!result.ok) {
+        setRetryMessage(result.message);
+        return;
+      }
+
+      setRetryMessage(result.message);
+      setStatus((prev) =>
+        prev
+          ? { ...prev, status: 'rendering' as ProjectStatus, errorMessage: null }
+          : prev,
+      );
+      await pollOnce();
+    } catch (err) {
+      setRetryMessage(err instanceof Error ? err.message : 'Retry failed');
+    } finally {
+      setRetrying(false);
+    }
+  };
 
   const currentStatus = status?.status ?? 'queued';
+  const showRetry = canRetryPcRender(currentStatus);
 
   return (
     <ScreenContainer>
@@ -106,7 +154,7 @@ export function ProgressScreen({ navigation, route }: Props) {
       </View>
 
       <View style={styles.spinnerWrap}>
-        {!isTerminalStatus(currentStatus) ? (
+        {!isTerminalStatus(currentStatus) || retrying ? (
           <ActivityIndicator size="large" color={colors.accentSoft} />
         ) : null}
       </View>
@@ -121,15 +169,38 @@ export function ProgressScreen({ navigation, route }: Props) {
 
       {pollError ? <Text style={styles.warn}>Connection issue: {pollError}</Text> : null}
 
-      {currentStatus === 'waiting_for_renderer' ? (
+      {retryMessage ? (
+        <Text style={[styles.retryMsg, retryMessage.includes('offline') ? styles.error : styles.okMsg]}>
+          {retryMessage}
+        </Text>
+      ) : null}
+
+      {showRetry ? (
         <View style={styles.hintBox}>
           <Text style={styles.hintText}>
-            Turn on your PC, start ai-server + Cloudflare tunnel, then wait or tap retry.
+            Script, images, and narration are already saved. Retry only resumes PC video render —
+            finished scenes on your PC are reused.
           </Text>
         </View>
       ) : null}
 
       <View style={styles.footer}>
+        {showRetry ? (
+          <>
+            <PrimaryButton
+              label="Retry PC render"
+              loading={retrying}
+              onPress={handleRetryPcRender}
+            />
+            <View style={styles.footerGap} />
+            <PrimaryButton
+              label="Back to home"
+              variant="secondary"
+              onPress={() => navigation.popToTop()}
+            />
+          </>
+        ) : null}
+
         {currentStatus === 'failed' ? (
           <>
             <PrimaryButton
@@ -143,13 +214,6 @@ export function ProgressScreen({ navigation, route }: Props) {
               onPress={() => navigation.popToTop()}
             />
           </>
-        ) : null}
-        {currentStatus === 'waiting_for_renderer' ? (
-          <PrimaryButton
-            label="Back to home"
-            variant="secondary"
-            onPress={() => navigation.popToTop()}
-          />
         ) : null}
       </View>
     </ScreenContainer>
@@ -185,10 +249,18 @@ const styles = StyleSheet.create({
     marginTop: spacing.md,
     fontSize: 14,
   },
+  okMsg: {
+    color: colors.success,
+  },
   warn: {
     color: colors.warning,
     marginTop: spacing.sm,
     fontSize: 13,
+  },
+  retryMsg: {
+    marginTop: spacing.md,
+    fontSize: 14,
+    lineHeight: 20,
   },
   hintBox: {
     marginTop: spacing.md,

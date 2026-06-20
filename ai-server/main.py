@@ -159,6 +159,7 @@ async def render_project(body: RenderProjectRequest) -> dict:
 
     clip_paths: list[Path] = []
     sorted_scenes = sorted(body.scenes, key=lambda scene: scene.order)
+    min_clip_bytes = 10_000
 
     try:
         for index, scene in enumerate(sorted_scenes):
@@ -168,7 +169,13 @@ async def render_project(body: RenderProjectRequest) -> dict:
             image_path = scene_dir / "input.jpg"
             clip_path = scene_dir / "clip.mp4"
 
-            await download_file(scene.image_url, image_path)
+            if clip_path.exists() and clip_path.stat().st_size >= min_clip_bytes:
+                logger.info("Resume: reusing existing clip %s", clip_path.name)
+                clip_paths.append(clip_path)
+                continue
+
+            if not image_path.exists() or image_path.stat().st_size == 0:
+                await download_file(scene.image_url, image_path)
 
             await asyncio.to_thread(
                 image_to_video,
@@ -186,15 +193,27 @@ async def render_project(body: RenderProjectRequest) -> dict:
             clip_paths.append(clip_path)
 
         merged_path = work / "merged.mp4"
-        await asyncio.to_thread(concat_videos, clip_paths, merged_path)
-
         final_path = work / "final.mp4"
+
+        if merged_path.exists() and merged_path.stat().st_size >= min_clip_bytes and not body.narration_url:
+            logger.info("Resume: reusing existing merged.mp4")
+        else:
+            await asyncio.to_thread(concat_videos, clip_paths, merged_path)
 
         if body.narration_url:
             audio_path = work / "narration.wav"
-            await download_file(body.narration_url, audio_path)
-            await asyncio.to_thread(merge_video_and_audio, merged_path, audio_path, final_path)
-        else:
+            if not audio_path.exists() or audio_path.stat().st_size == 0:
+                await download_file(body.narration_url, audio_path)
+
+            if (
+                final_path.exists()
+                and final_path.stat().st_size >= min_clip_bytes
+                and audio_path.exists()
+            ):
+                logger.info("Resume: reusing existing final.mp4")
+            else:
+                await asyncio.to_thread(merge_video_and_audio, merged_path, audio_path, final_path)
+        elif not final_path.exists() or final_path.stat().st_size < min_clip_bytes:
             shutil.copy2(merged_path, final_path)
 
         video_key = body.video_key or f"projects/{body.project_id}/final.mp4"

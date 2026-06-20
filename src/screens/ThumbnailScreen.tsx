@@ -1,7 +1,7 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, Image, StyleSheet, Text, View } from 'react-native';
-import { getProjectStatus } from '../api/client';
+import { getProjectStatus, resumeProjectRender } from '../api/client';
 import { PrimaryButton } from '../components/PrimaryButton';
 import { ScreenContainer } from '../components/ScreenContainer';
 import { POLL_INTERVAL_MS } from '../config/api';
@@ -13,6 +13,8 @@ type Props = NativeStackScreenProps<RootStackParamList, 'Thumbnail'>;
 export function ThumbnailScreen({ navigation, route }: Props) {
   const { projectId, thumbnailUrl, title } = route.params;
   const [rendering, setRendering] = useState(true);
+  const [needsRetry, setNeedsRetry] = useState(false);
+  const [retrying, setRetrying] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -31,7 +33,8 @@ export function ThumbnailScreen({ navigation, route }: Props) {
           return;
         }
 
-        setRendering(status.status !== 'failed');
+        setRendering(status.status !== 'failed' && status.status !== 'waiting_for_renderer');
+        setNeedsRetry(status.status === 'waiting_for_renderer');
 
         if (status.status !== 'done' && status.status !== 'failed') {
           timer = setTimeout(poll, POLL_INTERVAL_MS);
@@ -73,6 +76,23 @@ export function ThumbnailScreen({ navigation, route }: Props) {
           <ActivityIndicator color={colors.accentSoft} />
           <Text style={styles.renderingText}>Still rendering video on your PC…</Text>
         </View>
+      ) : null}
+
+      {needsRetry ? (
+        <PrimaryButton
+          label="Retry PC render"
+          loading={retrying}
+          onPress={async () => {
+            setRetrying(true);
+            try {
+              await resumeProjectRender(projectId);
+              setNeedsRetry(false);
+              setRendering(true);
+            } finally {
+              setRetrying(false);
+            }
+          }}
+        />
       ) : null}
 
       <View style={styles.footer}>
