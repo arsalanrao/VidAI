@@ -51,6 +51,7 @@ export const env = {
   chatterboxApiKey: optional('CHATTERBOX_API_KEY'),
   pcServerUrl: optional('PC_SERVER_URL'),
   pcApiSecret: optional('PC_API_SECRET'),
+  apiPublicUrl: optional('API_PUBLIC_URL', 'https://vidai-nw8e.onrender.com'),
   runWorker: optional('RUN_WORKER', 'true') === 'true',
   r2AccountId: optional('R2_ACCOUNT_ID'),
   r2AccessKeyId: optional('R2_ACCESS_KEY_ID'),

@@ -17,6 +17,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from download import download_file
 from ffmpeg_merge import FFmpegError, concat_videos, merge_video_and_audio
 from sd_video import configure_hf_auth, gpu_info, image_to_video
+from upload_r2 import notify_render_complete, upload_file
 
 ENV_PATH = Path(__file__).resolve().parent / ".env"
 load_dotenv(ENV_PATH)
@@ -77,6 +78,9 @@ class SceneInput(BaseModel):
 class RenderProjectRequest(BaseModel):
     project_id: str
     narration_url: str | None = None
+    video_key: str | None = None
+    video_upload_url: str | None = None
+    callback_url: str | None = None
     scenes: list[SceneInput]
 
 
@@ -193,6 +197,19 @@ async def render_project(body: RenderProjectRequest) -> dict:
         else:
             shutil.copy2(merged_path, final_path)
 
+        video_key = body.video_key or f"projects/{body.project_id}/final.mp4"
+
+        if body.video_upload_url:
+            await upload_file(final_path, body.video_upload_url)
+
+        if body.callback_url:
+            await notify_render_complete(
+                body.callback_url,
+                api_secret=settings.pc_api_secret,
+                project_id=body.project_id,
+                video_key=video_key,
+            )
+
     except FFmpegError as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
     except Exception as exc:
@@ -203,6 +220,8 @@ async def render_project(body: RenderProjectRequest) -> dict:
         "ok": True,
         "project_id": body.project_id,
         "video_path": str(final_path.resolve()),
+        "video_key": body.video_key or f"projects/{body.project_id}/final.mp4",
+        "uploaded": bool(body.video_upload_url),
         "scene_count": len(clip_paths),
     }
 

@@ -99,6 +99,22 @@ export async function getSignedObjectUrl(key: string, expiresInSeconds = 60 * 60
   );
 }
 
+export async function getSignedUploadUrl(
+  key: string,
+  contentType: string,
+  expiresInSeconds = 60 * 60,
+): Promise<string> {
+  return getSignedUrl(
+    getClient(),
+    new PutObjectCommand({
+      Bucket: env.r2Bucket,
+      Key: key,
+      ContentType: contentType,
+    }),
+    { expiresIn: expiresInSeconds },
+  );
+}
+
 export async function checkR2Connection(): Promise<void> {
   await getClient().send(
     new ListObjectsV2Command({

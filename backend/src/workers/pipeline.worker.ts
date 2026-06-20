@@ -5,7 +5,8 @@ import { prisma } from '../db/client.js';
 import { runScriptStage } from '../services/pipeline/script-stage.service.js';
 import { runFluxStage } from '../services/pipeline/flux-stage.service.js';
 import { runTtsStage } from '../services/pipeline/tts-stage.service.js';
-import { executeProjectRender } from '../services/pc/pc-render.service.js';
+import { checkPcHealth, executeProjectRender, pcRendererConfigured } from '../services/pc/pc-render.service.js';
+import { videoQueue } from '../queues/video.queue.js';
 
 async function processRenderDispatchJob(job: Job<RenderDispatchJobData>): Promise<void> {
   const { projectId } = job.data;
@@ -38,6 +39,41 @@ async function processVideoJob(job: Job<VideoJobData>): Promise<void> {
   await job.updateProgress(70);
 
   const narration = await runTtsStage(projectId);
+
+  await job.updateProgress(90);
+
+  if (pcRendererConfigured) {
+    const health = await checkPcHealth();
+
+    if (health.ok) {
+      await prisma.project.update({
+        where: { id: projectId },
+        data: { status: 'rendering', errorMessage: null },
+      });
+
+      await videoQueue.add(
+        'dispatch-render',
+        { projectId },
+        {
+          jobId: `render-${projectId}`,
+          removeOnComplete: true,
+          removeOnFail: 100,
+        },
+      );
+
+      console.log(`[worker] queued PC render for ${projectId}`);
+    } else {
+      await prisma.project.update({
+        where: { id: projectId },
+        data: {
+          status: 'waiting_for_renderer',
+          errorMessage: health.message,
+        },
+      });
+
+      console.log(`[worker] PC offline for ${projectId}: ${health.message}`);
+    }
+  }
 
   await job.updateProgress(100);
 

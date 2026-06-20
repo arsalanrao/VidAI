@@ -1,6 +1,7 @@
-import { env } from '../../config/env.js';
+import { env, r2Configured } from '../../config/env.js';
 import { prisma } from '../../db/client.js';
-import { getSignedObjectUrl } from '../storage/r2.service.js';
+import { getSignedObjectUrl, getSignedUploadUrl, projectKey } from '../storage/r2.service.js';
+import { completeProjectRender } from './render-webhook.service.js';
 
 const PC_HEALTH_TIMEOUT_MS = 15_000;
 const PC_RENDER_TIMEOUT_MS = 45 * 60 * 1000;
@@ -20,6 +21,10 @@ export type PcDispatchResult = {
 
 export const pcRendererConfigured =
   Boolean(env.pcServerUrl.trim()) && Boolean(env.pcApiSecret.trim());
+
+function apiPublicUrl(): string {
+  return env.apiPublicUrl.replace(/\/$/, '');
+}
 
 function pcBaseUrl(): string {
   return env.pcServerUrl.replace(/\/$/, '');
@@ -97,6 +102,10 @@ export async function validateProjectForRender(projectId: string): Promise<PcDis
     };
   }
 
+  if (!r2Configured) {
+    return { ok: false, message: 'R2 not configured — cannot store final video' };
+  }
+
   const project = await prisma.project.findUnique({
     where: { id: projectId },
     include: { scenes: { orderBy: { order: 'asc' } } },
@@ -137,9 +146,16 @@ export async function executeProjectRender(projectId: string): Promise<PcDispatc
     return { ok: false, message: `Project not found: ${projectId}` };
   }
 
+  const videoKey = projectKey(projectId, 'final.mp4');
+  const videoUploadUrl = await getSignedUploadUrl(videoKey, 'video/mp4', 60 * 60 * 2);
+  const callbackUrl = `${apiPublicUrl()}/api/webhooks/render-complete`;
+
   const payload = {
     project_id: projectId,
     narration_url: await getSignedObjectUrl(project.narrationUrl!),
+    video_key: videoKey,
+    video_upload_url: videoUploadUrl,
+    callback_url: callbackUrl,
     scenes: await Promise.all(
       project.scenes.map(async (scene) => ({
         order: scene.order,
@@ -175,17 +191,12 @@ export async function executeProjectRender(projectId: string): Promise<PcDispatc
       };
     }
 
-    await prisma.project.update({
-      where: { id: projectId },
-      data: {
-        status: 'rendered_local',
-        errorMessage: null,
-      },
-    });
+    const resolvedVideoKey = String(body.video_key ?? videoKey);
+    await completeProjectRender(projectId, resolvedVideoKey);
 
     return {
       ok: true,
-      message: 'PC finished rendering — Step 15 will upload final MP4 to R2',
+      message: 'Final video uploaded to R2 — project complete',
       pcResponse: body,
     };
   } catch (err) {
@@ -201,19 +212,4 @@ export async function executeProjectRender(projectId: string): Promise<PcDispatc
 
     return { ok: false, message };
   }
-}
-
-/** @deprecated Use queue + executeProjectRender — kept for direct calls in tests */
-export async function dispatchProjectRender(projectId: string): Promise<PcDispatchResult> {
-  const validation = await validateProjectForRender(projectId);
-  if (!validation.ok) {
-    return validation;
-  }
-
-  await prisma.project.update({
-    where: { id: projectId },
-    data: { status: 'rendering', errorMessage: null },
-  });
-
-  return executeProjectRender(projectId);
 }

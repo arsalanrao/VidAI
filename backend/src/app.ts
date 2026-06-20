@@ -11,6 +11,7 @@ import { checkKimiConnection } from './services/ai/kimi.service.js';
 import { checkFluxConnection } from './services/ai/flux.service.js';
 import { checkTtsConnection, listChatterboxVoices, listMagpieGrpcVoices, listMagpieVoices } from './services/ai/tts.service.js';
 import { checkPcHealth, pcRendererConfigured } from './services/pc/pc-render.service.js';
+import { registerWebhookRoutes } from './api/routes/webhook.routes.js';
 import type { Worker } from 'bullmq';
 
 let worker: Worker | undefined;
@@ -169,6 +170,7 @@ async function buildApp() {
   });
 
   await registerProjectRoutes(app);
+  await registerWebhookRoutes(app);
 
   return app;
 }

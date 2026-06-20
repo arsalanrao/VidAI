@@ -47,7 +47,7 @@ export async function registerProjectRoutes(app: FastifyInstance): Promise<void>
   });
 
   async function dispatchRenderHandler(
-    request: FastifyRequest<{ Params: { id: string } }>,
+    request: FastifyRequest<{ Params: { id: string }; Querystring: { force?: string } }>,
     reply: FastifyReply,
   ) {
     if (!pcRendererConfigured) {
@@ -69,11 +69,18 @@ export async function registerProjectRoutes(app: FastifyInstance): Promise<void>
       select: { status: true },
     });
 
-    if (project?.status === 'rendering') {
+    if (project?.status === 'rendering' && request.query?.force !== '1') {
       return reply.status(202).send({
         ok: true,
         status: 'rendering',
-        message: 'Render already in progress — poll GET /api/project/:id/status',
+        message: 'Render already in progress — poll GET /api/project/:id/status (add ?force=1 to re-queue)',
+      });
+    }
+
+    if (project?.status === 'done') {
+      return reply.status(409).send({
+        ok: false,
+        message: 'Project already complete',
       });
     }
 
@@ -130,6 +137,7 @@ export async function registerProjectRoutes(app: FastifyInstance): Promise<void>
 
     const thumbnail = await resolveAssetUrl(project.thumbnail);
     const narrationUrl = await resolveAssetUrl(project.narrationUrl);
+    const videoUrl = await resolveAssetUrl(project.videoUrl);
     const scenes = await Promise.all(
       project.scenes.map(async (scene) => ({
         ...scene,
@@ -142,7 +150,7 @@ export async function registerProjectRoutes(app: FastifyInstance): Promise<void>
       status: project.status,
       title: project.title,
       thumbnail,
-      videoUrl: project.videoUrl,
+      videoUrl,
       narrationUrl,
       script: project.script,
       scenes,

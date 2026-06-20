@@ -856,7 +856,25 @@ This sends scenes + narration to your PC for SVD rendering (~4 min per scene).
 
 # Step 15 — Connect everything (full pipeline)
 
-**Goal:** One YouTube URL → final video file.
+**Goal:** One YouTube URL → final video file in R2, playable in browser.
+
+**What happens automatically now:**
+1. `POST /api/project/create` with YouTube URL → pipeline runs on Render
+2. Script → images → narration (steps 0–11)
+3. After narration, Render **auto-queues PC render** (if `/health/pc` OK)
+4. PC renders scenes, **uploads `final.mp4` to R2**, calls webhook
+5. Status → **`done`**, `videoUrl` playable via `/api/project/:id/result`
+
+**If PC is off:** Status → `waiting_for_renderer` (no crash). Start PC + tunnel, then:
+```powershell
+Invoke-RestMethod "https://vidai-nw8e.onrender.com/api/project/PROJECT_ID/dispatch-render"
+```
+
+**Fix a stuck `rendering` project** (video already on PC):
+```powershell
+cd D:\git\apps\VidAiPro\ai-server
+.\complete-stuck-render.ps1 -ProjectId cmqlnpe7k0000k037uwqmxslc
+```
 
 **Checklist:**
 - [ ] Paste URL in API  
@@ -865,13 +883,11 @@ This sends scenes + narration to your PC for SVD rendering (~4 min per scene).
 - [ ] Images in R2  
 - [ ] Narration WAV in R2  
 - [ ] PC received scenes  
-- [ ] PC returned final MP4  
+- [ ] PC uploaded final MP4 to R2  
 - [ ] Project status = `done`  
 - [ ] You can play video in browser  
 
-**If PC is off:** Status should say `waiting_for_renderer` — not crash.
-
-**Tell Cursor:** *“Do Step 15 — wire full pipeline + webhook”*
+**Tell Cursor:** *“Do Step 16 — mobile screens one at a time”*
 
 ---
 
