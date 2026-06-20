@@ -22,6 +22,12 @@ export type RecoveryMeta = {
   userDirection?: string;
   fluxStartAttempt?: number;
   extractMode?: 'default' | 'captions' | 'title_only';
+  blockedPrompt?: string;
+  suggestedPrompt?: string;
+  promptAlternatives?: string[];
+  failedSceneId?: string;
+  failedSceneOrder?: number;
+  aiPrompt?: string;
 };
 
 export function getRecoveryMeta(script: unknown): RecoveryMeta {
@@ -50,6 +56,32 @@ export function getRecoveryMeta(script: unknown): RecoveryMeta {
 
   if (record.extractMode === 'captions' || record.extractMode === 'title_only' || record.extractMode === 'default') {
     meta.extractMode = record.extractMode;
+  }
+
+  if (typeof record.aiPrompt === 'string') {
+    meta.aiPrompt = record.aiPrompt;
+  }
+
+  if (typeof record.blockedPrompt === 'string') {
+    meta.blockedPrompt = record.blockedPrompt;
+  }
+
+  if (typeof record.suggestedPrompt === 'string') {
+    meta.suggestedPrompt = record.suggestedPrompt;
+  }
+
+  if (Array.isArray(record.promptAlternatives)) {
+    meta.promptAlternatives = record.promptAlternatives.filter(
+      (item): item is string => typeof item === 'string',
+    );
+  }
+
+  if (typeof record.failedSceneId === 'string') {
+    meta.failedSceneId = record.failedSceneId;
+  }
+
+  if (typeof record.failedSceneOrder === 'number') {
+    meta.failedSceneOrder = record.failedSceneOrder;
   }
 
   return meta;
@@ -178,6 +210,10 @@ export async function markPipelineFailure(
   projectId: string,
   stage: PipelineFailedStage,
   message: string,
+  imageRecovery?: Omit<
+    RecoveryMeta,
+    'failedStage' | 'recoveryAttempt' | 'userDirection' | 'fluxStartAttempt' | 'extractMode'
+  >,
 ): Promise<void> {
   const project = await prisma.project.findUnique({
     where: { id: projectId },
@@ -187,6 +223,7 @@ export async function markPipelineFailure(
   const merged = await mergeScriptMeta(projectId, {
     failedStage: stage,
     recoveryAttempt: (meta.recoveryAttempt ?? 0) + 1,
+    ...(imageRecovery ?? {}),
   });
 
   await prisma.project.update({

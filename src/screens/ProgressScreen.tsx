@@ -8,7 +8,9 @@ import {
   retryImages,
   retryScript,
   retryStart,
+  suggestSaferPrompt,
 } from '../api/client';
+import { ImagePromptRecovery } from '../components/ImagePromptRecovery';
 import { PipelineSteps } from '../components/PipelineSteps';
 import { PrimaryButton } from '../components/PrimaryButton';
 import { ScreenContainer } from '../components/ScreenContainer';
@@ -50,6 +52,7 @@ export function ProgressScreen({ navigation, route }: Props) {
   const [recoveringStep, setRecoveringStep] = useState<PipelineFailedStage | null>(null);
   const [selectedVoice, setSelectedVoice] = useState('narrator');
   const [selectedSceneId, setSelectedSceneId] = useState<string | null>(null);
+  const [generatingPrompt, setGeneratingPrompt] = useState(false);
   const [pollEpoch, setPollEpoch] = useState(0);
 
   const handleDone = useCallback(async () => {
@@ -164,6 +167,34 @@ export function ProgressScreen({ navigation, route }: Props) {
     }
   };
 
+  const isContentFiltered =
+    Boolean(status?.errorMessage?.includes('CONTENT_FILTERED')) ||
+    Boolean(status?.imageRecovery?.blockedPrompt);
+
+  const handleGenerateSaferPrompt = async () => {
+    setGeneratingPrompt(true);
+    setRetryMessage(null);
+
+    try {
+      const result = await suggestSaferPrompt(projectId, {
+        sceneId: selectedSceneId ?? status?.imageRecovery?.failedSceneId ?? undefined,
+        prompt: selectedScene?.prompt,
+        useAi: true,
+      });
+
+      setRetryMessage(
+        result.aiPrompt
+          ? 'AI softer prompt ready — review and tap Retry images.'
+          : 'Softer prompt alternatives updated.',
+      );
+      await pollOnce();
+    } catch (err) {
+      setRetryMessage(err instanceof Error ? err.message : 'Could not generate softer prompt');
+    } finally {
+      setGeneratingPrompt(false);
+    }
+  };
+
   const isRecovering = recoveringStep !== null;
   const showRecovery = Boolean(failedStage) && !isRecovering;
 
@@ -226,10 +257,6 @@ export function ProgressScreen({ navigation, route }: Props) {
 
         {showRecovery && failedStage === 'images' ? (
           <View style={styles.wrap}>
-            <Text style={styles.hint}>
-              Safer prompts avoid brands, violence, and weapons. Edit the scene description below.
-            </Text>
-
             {status?.scenes && status.scenes.length > 1 ? (
               <View style={styles.scenePickRow}>
                 {status.scenes.map((scene) => (
@@ -244,21 +271,49 @@ export function ProgressScreen({ navigation, route }: Props) {
               </View>
             ) : null}
 
-            <StepRecoveryPanel
-              stepId="images"
-              visible
-              loading={recoveringStep === 'images'}
-              defaultValue={selectedScene?.prompt ?? ''}
-              placeholder="Scene image prompt — neutral, family-friendly, vertical 9:16…"
-              onRecover={(input) =>
-                runRecovery('images', () =>
-                  retryImages(projectId, {
-                    sceneId: selectedSceneId ?? undefined,
-                    promptOverride: input || undefined,
-                  }),
-                )
-              }
-            />
+            {isContentFiltered || status?.imageRecovery ? (
+              <ImagePromptRecovery
+                blockedPrompt={
+                  status?.imageRecovery?.blockedPrompt ?? selectedScene?.prompt ?? null
+                }
+                suggestedPrompt={
+                  status?.imageRecovery?.suggestedPrompt ??
+                  status?.imageRecovery?.aiPrompt ??
+                  null
+                }
+                alternatives={status?.imageRecovery?.promptAlternatives ?? []}
+                loading={recoveringStep === 'images'}
+                generating={generatingPrompt}
+                onGenerateSafer={handleGenerateSaferPrompt}
+                onRetry={(input) =>
+                  runRecovery('images', () =>
+                    retryImages(projectId, {
+                      sceneId:
+                        selectedSceneId ??
+                        status?.imageRecovery?.failedSceneId ??
+                        undefined,
+                      promptOverride: input,
+                    }),
+                  )
+                }
+              />
+            ) : (
+              <StepRecoveryPanel
+                stepId="images"
+                visible
+                loading={recoveringStep === 'images'}
+                defaultValue={selectedScene?.prompt ?? ''}
+                placeholder="Scene image prompt — neutral, family-friendly, vertical 9:16…"
+                onRecover={(input) =>
+                  runRecovery('images', () =>
+                    retryImages(projectId, {
+                      sceneId: selectedSceneId ?? undefined,
+                      promptOverride: input || undefined,
+                    }),
+                  )
+                }
+              />
+            )}
           </View>
         ) : null}
 

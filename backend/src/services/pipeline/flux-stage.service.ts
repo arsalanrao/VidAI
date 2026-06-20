@@ -1,5 +1,5 @@
 import { prisma } from '../../db/client.js';
-import { generateFluxImageWithRetry, FLUX_MAX_ATTEMPTS } from '../ai/flux.service.js';
+import { generateFluxImageWithRetry, FLUX_MAX_ATTEMPTS, FluxContentFilteredError, FluxSceneFilteredError } from '../ai/flux.service.js';
 import {
   getSignedObjectUrl,
   projectKey,
@@ -8,12 +8,41 @@ import {
 import { r2Configured } from '../../config/env.js';
 import type { ProjectScript, SceneScript } from '../../types/script.types.js';
 
+import { getRecoveryMeta } from './pipeline-recovery.service.js';
+
 function parseProjectScript(script: unknown): ProjectScript {
   if (!script || typeof script !== 'object') {
     throw new Error('Project script missing — run script stage first');
   }
 
   return script as ProjectScript;
+}
+
+function rethrowSceneFilter(err: unknown, sceneId: string, sceneOrder: number): never {
+  if (err instanceof FluxContentFilteredError) {
+    throw new FluxSceneFilteredError(err, sceneId, sceneOrder);
+  }
+
+  throw err;
+}
+
+async function generateFluxForPrompt(
+  prompt: string,
+  fluxStartAttempt: number,
+  scene?: { id: string; order: number },
+): Promise<Buffer> {
+  try {
+    return await generateFluxImageWithRetry(prompt, {
+      startAttempt: fluxStartAttempt,
+      maxAttempts: FLUX_MAX_ATTEMPTS + fluxStartAttempt,
+    });
+  } catch (err) {
+    if (scene) {
+      rethrowSceneFilter(err, scene.id, scene.order);
+    }
+
+    throw err;
+  }
 }
 
 function sceneImagePrompts(sceneRecord: { prompt: string }, scriptScene?: SceneScript): string[] {
@@ -29,8 +58,6 @@ function sceneImagePrompts(sceneRecord: { prompt: string }, scriptScene?: SceneS
     `${base}, intense close-up, emotional detail`,
   ];
 }
-
-import { getRecoveryMeta } from './pipeline-recovery.service.js';
 
 export async function runFluxStage(
   projectId: string,
@@ -70,10 +97,7 @@ export async function runFluxStage(
 
   if (!thumbnailKey || !skipExisting || options?.thumbnailPromptOverride) {
     const thumbPrompt = options?.thumbnailPromptOverride ?? script.thumbnailPrompt;
-    const thumbnailBuffer = await generateFluxImageWithRetry(thumbPrompt, {
-      startAttempt: fluxStartAttempt,
-      maxAttempts: FLUX_MAX_ATTEMPTS + fluxStartAttempt,
-    });
+    const thumbnailBuffer = await generateFluxForPrompt(thumbPrompt, fluxStartAttempt);
     thumbnailKey = projectKey(projectId, 'thumbnail.jpg');
 
     await uploadObject({
@@ -104,9 +128,10 @@ export async function runFluxStage(
     const imageKeys: string[] = [];
 
     for (let variant = 0; variant < 3; variant += 1) {
-      const imageBuffer = await generateFluxImageWithRetry(prompts[variant] ?? prompts[0]!, {
-        startAttempt: fluxStartAttempt,
-        maxAttempts: FLUX_MAX_ATTEMPTS + fluxStartAttempt,
+      const prompt = prompts[variant] ?? prompts[0]!;
+      const imageBuffer = await generateFluxForPrompt(prompt, fluxStartAttempt, {
+        id: scene.id,
+        order: scene.order,
       });
       const suffix = String.fromCharCode(97 + variant);
       const key = projectKey(

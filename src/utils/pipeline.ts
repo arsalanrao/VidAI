@@ -218,7 +218,7 @@ export function formatProjectError(
   const stage = failedStage ?? inferFailedStageFromMessage(errorMessage);
 
   if (errorMessage.includes('CONTENT_FILTERED') || stage === 'images') {
-    return 'An image was blocked by the safety filter. Edit the scene prompt below and tap Retry images — the server will use softer, family-friendly prompts.';
+    return 'An image was blocked by the safety filter. A softer prompt is ready below — edit it or tap Generate softer prompt, then Retry images.';
   }
 
   if (errorMessage.includes('FLUX')) {

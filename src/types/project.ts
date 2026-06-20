@@ -31,6 +31,7 @@ export type ProjectStatusResponse = {
   failedStage?: PipelineFailedStage | null;
   recoveryAttempt?: number;
   completeness?: ProjectCompleteness;
+  imageRecovery?: ImageRecoveryInfo | null;
   scenes?: Array<{
     id: string;
     order: number;
@@ -40,6 +41,15 @@ export type ProjectStatusResponse = {
 };
 
 export type PipelineFailedStage = 'start' | 'script' | 'images' | 'audio' | 'render';
+
+export type ImageRecoveryInfo = {
+  blockedPrompt: string | null;
+  suggestedPrompt: string | null;
+  promptAlternatives: string[];
+  failedSceneId: string | null;
+  failedSceneOrder: number | null;
+  aiPrompt: string | null;
+};
 
 export type SceneResult = {
   id: string;

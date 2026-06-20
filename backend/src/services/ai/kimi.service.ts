@@ -320,3 +320,33 @@ export async function generateKimiScript(
 
 // Backwards-compatible alias for older imports
 export const checkMoonshotConnection = checkKimiConnection;
+
+const SAFER_IMAGE_PROMPT_SYSTEM = `You rewrite image prompts that were blocked by an AI safety filter.
+Rules:
+- Family-friendly, SFW, no violence, weapons, blood, gore, or fighting
+- No copyrighted character or brand names — use generic descriptions
+- Vertical 9:16 cinematic b-roll / illustration style
+- Include "vertical 9:16, no text, no watermark"
+- Keep the same topic and mood as the original when possible
+- Return ONLY the rewritten prompt as plain text — no JSON, no quotes, no explanation`;
+
+export async function generateSaferImagePromptWithKimi(blockedPrompt: string): Promise<string> {
+  const content = await invokeKimi([
+    { role: 'system', content: SAFER_IMAGE_PROMPT_SYSTEM },
+    {
+      role: 'user',
+      content: `This FLUX image prompt was blocked by CONTENT_FILTERED:\n\n${blockedPrompt}\n\nRewrite it to pass the safety filter while keeping the scene intent.`,
+    },
+  ]);
+
+  const rewritten = stripThinkingBlocks(content)
+    .replace(/^["']|["']$/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  if (rewritten.length < 20) {
+    throw new Error('Kimi returned an unusable softer prompt');
+  }
+
+  return rewritten.slice(0, 600);
+}

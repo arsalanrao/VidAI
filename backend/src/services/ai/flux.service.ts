@@ -41,12 +41,42 @@ const FLUX_FALLBACK_SIZES: Array<{ width: number; height: number }> = [
 export class FluxContentFilteredError extends Error {
   finishReason: string;
   seed: number;
+  originalPrompt: string;
+  suggestedPrompt: string;
+  alternatives: string[];
 
-  constructor(finishReason: string, seed: number) {
+  constructor(
+    finishReason: string,
+    seed: number,
+    originalPrompt: string,
+    suggestedPrompt: string,
+    alternatives: string[] = [],
+  ) {
     super(`FLUX content filtered (${finishReason})`);
     this.name = 'FluxContentFilteredError';
     this.finishReason = finishReason;
     this.seed = seed;
+    this.originalPrompt = originalPrompt;
+    this.suggestedPrompt = suggestedPrompt;
+    this.alternatives = alternatives;
+  }
+}
+
+export class FluxSceneFilteredError extends FluxContentFilteredError {
+  sceneId: string;
+  sceneOrder: number;
+
+  constructor(base: FluxContentFilteredError, sceneId: string, sceneOrder: number) {
+    super(
+      base.finishReason,
+      base.seed,
+      base.originalPrompt,
+      base.suggestedPrompt,
+      base.alternatives,
+    );
+    this.name = 'FluxSceneFilteredError';
+    this.sceneId = sceneId;
+    this.sceneOrder = sceneOrder;
   }
 }
 
@@ -109,6 +139,23 @@ export function softenPromptForFilter(prompt: string, attempt: number): string {
   }
 
   return result.replace(/\s+/g, ' ').trim();
+}
+
+/** Rule-based softer prompts shown to the user when CONTENT_FILTERED blocks generation. */
+export function buildSaferPromptAlternatives(originalPrompt: string): {
+  suggested: string;
+  softer: string;
+  abstract: string;
+  all: string[];
+} {
+  const softer = softenPromptForFilter(originalPrompt, 2);
+  const suggested = softenPromptForFilter(originalPrompt, 3);
+  const abstract = softenPromptForFilter(originalPrompt, 4);
+  const all = [softer, suggested, abstract].filter(
+    (value, index, list) => list.indexOf(value) === index,
+  );
+
+  return { suggested, softer, abstract, all };
 }
 
 export function formatNvidiaError(data: unknown, status: number): string {
@@ -194,7 +241,13 @@ async function invokeFlux(payload: FluxPayload): Promise<Buffer> {
 
   if (!artifact?.base64) {
     if (finishReason === 'CONTENT_FILTERED') {
-      throw new FluxContentFilteredError(finishReason, artifact?.seed ?? payload.seed);
+      throw new FluxContentFilteredError(
+        finishReason,
+        artifact?.seed ?? payload.seed,
+        payload.prompt,
+        payload.prompt,
+        [],
+      );
     }
 
     throw new Error(`FLUX returned no image — ${formatNvidiaError(data, response.status)}`);
@@ -202,7 +255,13 @@ async function invokeFlux(payload: FluxPayload): Promise<Buffer> {
 
   if (finishReason !== 'SUCCESS' && finishReason !== 'STOP') {
     if (finishReason === 'CONTENT_FILTERED') {
-      throw new FluxContentFilteredError(finishReason, artifact.seed ?? payload.seed);
+      throw new FluxContentFilteredError(
+        finishReason,
+        artifact.seed ?? payload.seed,
+        payload.prompt,
+        payload.prompt,
+        [],
+      );
     }
 
     throw new Error(`FLUX generation failed: ${finishReason}`);
@@ -281,6 +340,17 @@ export async function generateFluxImageWithRetry(
       }
 
       if (!isRetryableFluxError(err) || attempt >= maxAttempts - 1) {
+        if (isRetryableFluxError(err)) {
+          const { suggested, all } = buildSaferPromptAlternatives(prompt);
+          throw new FluxContentFilteredError(
+            'CONTENT_FILTERED',
+            randomSeed(),
+            prompt,
+            suggested,
+            all,
+          );
+        }
+
         throw lastError;
       }
 

@@ -23,6 +23,10 @@ import {
   PipelineStageError,
   type PipelineFailedStage,
 } from '../services/pipeline/pipeline-recovery.service.js';
+import {
+  FluxContentFilteredError,
+  FluxSceneFilteredError,
+} from '../services/ai/flux.service.js';
 import { queueCloudRender } from '../services/video/cloud-render-dispatch.service.js';
 import { videoQueue } from '../queues/video.queue.js';
 import type { VoicePreset } from '../types/project-preferences.types.js';
@@ -44,6 +48,27 @@ async function runStage<T>(
   } catch (err) {
     const failedStage = err instanceof PipelineStageError ? err.stage : stage;
     const message = err instanceof Error ? err.message : `${stage} stage failed`;
+
+    if (err instanceof FluxSceneFilteredError) {
+      await markPipelineFailure(projectId, 'images', message, {
+        blockedPrompt: err.originalPrompt,
+        suggestedPrompt: err.suggestedPrompt,
+        promptAlternatives: err.alternatives,
+        failedSceneId: err.sceneId,
+        failedSceneOrder: err.sceneOrder,
+      });
+      throw err;
+    }
+
+    if (err instanceof FluxContentFilteredError) {
+      await markPipelineFailure(projectId, 'images', message, {
+        blockedPrompt: err.originalPrompt,
+        suggestedPrompt: err.suggestedPrompt,
+        promptAlternatives: err.alternatives,
+      });
+      throw err;
+    }
+
     await markPipelineFailure(projectId, failedStage, message);
     throw err;
   }

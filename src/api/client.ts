@@ -191,6 +191,22 @@ export async function retryAudio(
   });
 }
 
+export async function suggestSaferPrompt(
+  projectId: string,
+  options?: { prompt?: string; sceneId?: string; useAi?: boolean },
+): Promise<{
+  ok: boolean;
+  blockedPrompt: string;
+  suggestedPrompt: string;
+  alternatives: string[];
+  aiPrompt?: string | null;
+}> {
+  return request(`/api/project/${projectId}/suggest-safer-prompt`, {
+    method: 'POST',
+    body: JSON.stringify(options ?? { useAi: true }),
+  });
+}
+
 export async function fixRender(projectId: string): Promise<ActionResponse> {
   return request<ActionResponse>(`/api/project/${projectId}/fix-render`, {
     method: 'POST',

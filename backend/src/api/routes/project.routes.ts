@@ -10,7 +10,12 @@ import {
   inferFailedStage,
   queueResumePipeline,
 } from '../../services/pipeline/pipeline-recovery.service.js';
+import {
+  buildSaferPromptSuggestions,
+  buildSaferPromptSuggestionsWithAi,
+} from '../../services/pipeline/image-prompt.service.js';
 import { projectPreferencesSchema } from '../../types/project-preferences.types.js';
+import { Prisma } from '@prisma/client';
 
 export async function registerProjectRoutes(app: FastifyInstance): Promise<void> {
   app.post<{
@@ -106,6 +111,17 @@ export async function registerProjectRoutes(app: FastifyInstance): Promise<void>
     const completeness = computeCompleteness(project);
     const failedStage = inferFailedStage(project);
     const recovery = getRecoveryMeta(project.script);
+    const imageRecovery =
+      recovery.blockedPrompt || recovery.suggestedPrompt
+        ? {
+            blockedPrompt: recovery.blockedPrompt ?? null,
+            suggestedPrompt: recovery.suggestedPrompt ?? null,
+            promptAlternatives: recovery.promptAlternatives ?? [],
+            failedSceneId: recovery.failedSceneId ?? null,
+            failedSceneOrder: recovery.failedSceneOrder ?? null,
+            aiPrompt: recovery.aiPrompt ?? null,
+          }
+        : null;
 
     return reply.send({
       id: project.id,
@@ -117,6 +133,7 @@ export async function registerProjectRoutes(app: FastifyInstance): Promise<void>
       failedStage,
       recoveryAttempt: recovery.recoveryAttempt ?? 0,
       completeness,
+      imageRecovery,
       scenes: project.scenes.map((scene) => ({
         id: scene.id,
         order: scene.order,
@@ -216,6 +233,73 @@ export async function registerProjectRoutes(app: FastifyInstance): Promise<void>
     async (request, reply) =>
       recoveryHandler(request, reply, 'render', { fixRenderLowMemory: true }),
   );
+
+  app.post<{
+    Params: { id: string };
+    Body: { prompt?: string; sceneId?: string; useAi?: boolean };
+  }>('/api/project/:id/suggest-safer-prompt', async (request, reply) => {
+    const project = await prisma.project.findUnique({
+      where: { id: request.params.id },
+      include: { scenes: { orderBy: { order: 'asc' } } },
+    });
+
+    if (!project) {
+      return reply.status(404).send({ error: 'Project not found' });
+    }
+
+    const recovery = getRecoveryMeta(project.script);
+    const scene = request.body?.sceneId
+      ? project.scenes.find((item) => item.id === request.body.sceneId)
+      : project.scenes.find((item) => item.id === recovery.failedSceneId) ?? project.scenes[0];
+
+    const blockedPrompt =
+      request.body?.prompt?.trim() ||
+      recovery.blockedPrompt ||
+      scene?.prompt ||
+      (typeof project.script === 'object' &&
+      project.script &&
+      'thumbnailPrompt' in project.script &&
+      typeof (project.script as Record<string, unknown>).thumbnailPrompt === 'string'
+        ? String((project.script as Record<string, unknown>).thumbnailPrompt)
+        : '');
+
+    if (!blockedPrompt) {
+      return reply.status(400).send({ error: 'No prompt available to soften' });
+    }
+
+    const useAi = request.body?.useAi !== false;
+    const result = useAi
+      ? await buildSaferPromptSuggestionsWithAi(blockedPrompt)
+      : buildSaferPromptSuggestions(blockedPrompt);
+
+    const existingScript =
+      project.script && typeof project.script === 'object'
+        ? (project.script as Record<string, unknown>)
+        : {};
+
+    await prisma.project.update({
+      where: { id: project.id },
+      data: {
+        script: {
+          ...existingScript,
+          blockedPrompt: result.blockedPrompt,
+          suggestedPrompt: result.suggestedPrompt,
+          promptAlternatives: result.alternatives,
+          aiPrompt: result.aiPrompt ?? null,
+          failedSceneId: scene?.id ?? recovery.failedSceneId ?? null,
+          failedSceneOrder: scene?.order ?? recovery.failedSceneOrder ?? null,
+        } as Prisma.InputJsonValue,
+      },
+    });
+
+    return reply.send({
+      ok: true,
+      blockedPrompt: result.blockedPrompt,
+      suggestedPrompt: result.suggestedPrompt,
+      alternatives: result.alternatives,
+      aiPrompt: result.aiPrompt ?? null,
+    });
+  });
 
   async function dispatchRenderHandler(
     request: FastifyRequest<{ Params: { id: string }; Querystring: { force?: string } }>,
