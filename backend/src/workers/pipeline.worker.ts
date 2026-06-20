@@ -73,25 +73,24 @@ async function processVideoJob(job: Job<VideoJobData>): Promise<void> {
 
   await job.updateProgress(90);
 
-  await prisma.project.update({
-    where: { id: projectId },
-    data: { status: 'rendering', errorMessage: null },
-  });
+  try {
+    await runCloudRenderStage(projectId);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Cloud render failed';
 
-  await videoQueue.add(
-    'cloud-render',
-    { projectId },
-    {
-      jobId: `cloud-render-${projectId}`,
-      removeOnComplete: true,
-      removeOnFail: 100,
-    },
-  );
+    await prisma.project.update({
+      where: { id: projectId },
+      data: { status: 'waiting_for_renderer', errorMessage: message },
+    });
+
+    console.error(`[worker] cloud render failed for ${projectId}:`, message);
+    return;
+  }
 
   await job.updateProgress(100);
 
   console.log(
-    `[worker] narration ready for ${projectId}: "${script.title}" — ${assets.sceneKeys.length} images, audio ${narration.narrationKey}`,
+    `[worker] pipeline complete for ${projectId}: "${script.title}" — ${assets.sceneKeys.length} images, audio ${narration.narrationKey}`,
   );
 }
 

@@ -15,7 +15,7 @@ export const PIPELINE_STEPS: PipelineStep[] = [
   {
     id: 'generate',
     label: 'Script, images & voice',
-    statuses: ['processing', 'narration_ready'],
+    statuses: ['processing', 'script_ready', 'images_ready', 'narration_ready'],
   },
   {
     id: 'render',
@@ -117,6 +117,8 @@ export function statusLabel(status: ProjectStatus): string {
       return status;
   }
 }
+
+export { isProjectIncomplete } from './projectCompleteness';
 
 export function isTerminalStatus(status: ProjectStatus): boolean {
   return status === 'done' || status === 'failed';

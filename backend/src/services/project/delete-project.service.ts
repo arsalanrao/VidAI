@@ -1,7 +1,42 @@
 import { prisma } from '../../db/client.js';
 import { videoQueue } from '../../queues/video.queue.js';
 import { r2Configured } from '../../config/env.js';
-import { deleteObjectsWithPrefix, projectKey } from '../storage/r2.service.js';
+import { deleteObject, deleteObjectsWithPrefix, projectKey } from '../storage/r2.service.js';
+
+function collectStoredKeys(project: {
+  thumbnail: string | null;
+  videoUrl: string | null;
+  narrationUrl: string | null;
+  scenes: Array<{ imageUrl: string | null; imageUrls: unknown; videoUrl: string | null }>;
+}): string[] {
+  const keys = new Set<string>();
+
+  for (const value of [project.thumbnail, project.videoUrl, project.narrationUrl]) {
+    if (value?.trim()) {
+      keys.add(value.trim());
+    }
+  }
+
+  for (const scene of project.scenes) {
+    if (scene.imageUrl?.trim()) {
+      keys.add(scene.imageUrl.trim());
+    }
+
+    if (scene.videoUrl?.trim()) {
+      keys.add(scene.videoUrl.trim());
+    }
+
+    if (Array.isArray(scene.imageUrls)) {
+      for (const key of scene.imageUrls) {
+        if (typeof key === 'string' && key.trim()) {
+          keys.add(key.trim());
+        }
+      }
+    }
+  }
+
+  return [...keys];
+}
 
 async function removeQueueJobs(projectId: string): Promise<number> {
   const knownJobIds = [`process-${projectId}`, `cloud-render-${projectId}`];
@@ -34,6 +69,27 @@ async function removeQueueJobs(projectId: string): Promise<number> {
   return removed;
 }
 
+async function deleteProjectStorage(projectId: string, explicitKeys: string[]): Promise<number> {
+  if (!r2Configured) {
+    return 0;
+  }
+
+  const deleted = new Set<string>();
+
+  for (const key of explicitKeys) {
+    try {
+      await deleteObject(key);
+      deleted.add(key);
+    } catch (err) {
+      console.warn(`[delete] could not remove R2 object ${key}:`, err);
+    }
+  }
+
+  const prefixDeleted = await deleteObjectsWithPrefix(`${projectKey(projectId)}/`);
+
+  return deleted.size + prefixDeleted;
+}
+
 export async function deleteProject(projectId: string): Promise<{
   ok: true;
   message: string;
@@ -42,7 +98,7 @@ export async function deleteProject(projectId: string): Promise<{
 }> {
   const project = await prisma.project.findUnique({
     where: { id: projectId },
-    select: { id: true, title: true },
+    include: { scenes: true },
   });
 
   if (!project) {
@@ -50,9 +106,8 @@ export async function deleteProject(projectId: string): Promise<{
   }
 
   const queueJobsRemoved = await removeQueueJobs(projectId);
-  const r2ObjectsDeleted = r2Configured
-    ? await deleteObjectsWithPrefix(`${projectKey(projectId)}/`)
-    : 0;
+  const explicitKeys = collectStoredKeys(project);
+  const r2ObjectsDeleted = await deleteProjectStorage(projectId, explicitKeys);
 
   await prisma.project.delete({ where: { id: projectId } });
 
@@ -60,7 +115,7 @@ export async function deleteProject(projectId: string): Promise<{
 
   return {
     ok: true,
-    message: `Deleted "${label}" (${r2ObjectsDeleted} cloud files, ${queueJobsRemoved} queue jobs removed)`,
+    message: `Deleted "${label}" — removed ${r2ObjectsDeleted} cloud file(s) and ${queueJobsRemoved} queue job(s)`,
     r2ObjectsDeleted,
     queueJobsRemoved,
   };

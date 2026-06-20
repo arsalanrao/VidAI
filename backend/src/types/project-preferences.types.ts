@@ -67,6 +67,23 @@ export function parseProjectPreferences(raw: unknown): ProjectPreferences {
   return projectPreferencesSchema.parse(raw ?? DEFAULT_PREFERENCES);
 }
 
+export function readProjectPreferences(project: {
+  preferences?: unknown;
+  script?: unknown;
+}): ProjectPreferences {
+  if (project.preferences) {
+    return parseProjectPreferences(project.preferences);
+  }
+
+  const script = project.script;
+
+  if (script && typeof script === 'object' && 'preferences' in script) {
+    return parseProjectPreferences((script as Record<string, unknown>).preferences);
+  }
+
+  return DEFAULT_PREFERENCES;
+}
+
 export function visualThemeLabel(theme: VisualTheme): string {
   const labels: Record<VisualTheme, string> = {
     cinematic: 'Cinematic',

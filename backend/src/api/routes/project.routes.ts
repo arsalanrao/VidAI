@@ -26,7 +26,7 @@ export async function registerProjectRoutes(app: FastifyInstance): Promise<void>
       data: {
         youtubeUrl,
         status: 'queued',
-        preferences,
+        script: { preferences },
       },
     });
 

@@ -3,6 +3,7 @@ import { generateNarrationAudio } from '../ai/tts.service.js';
 import { projectKey, uploadObject } from '../storage/r2.service.js';
 import { r2Configured } from '../../config/env.js';
 import type { ProjectScript } from '../../types/script.types.js';
+import { readProjectPreferences, voicePresetToTtsVoice } from '../../types/project-preferences.types.js';
 
 function parseProjectScript(script: unknown): ProjectScript {
   if (!script || typeof script !== 'object') {
@@ -24,12 +25,14 @@ export async function runTtsStage(projectId: string): Promise<{ narrationKey: st
   }
 
   const script = parseProjectScript(project.script);
+  const preferences = readProjectPreferences(project);
+  const voiceConfig = voicePresetToTtsVoice(preferences.voicePreset);
 
   if (!script.narration?.trim()) {
     throw new Error('Script has no narration text for TTS');
   }
 
-  const audioBuffer = await generateNarrationAudio(script.narration);
+  const audioBuffer = await generateNarrationAudio(script.narration, voiceConfig);
   const narrationKey = projectKey(projectId, 'narration.wav');
 
   await uploadObject({

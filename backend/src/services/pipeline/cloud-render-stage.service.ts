@@ -2,6 +2,7 @@ import { prisma } from '../../db/client.js';
 import { downloadObject, projectKey, uploadObject } from '../storage/r2.service.js';
 import { r2Configured } from '../../config/env.js';
 import type { MotionPreset, ProjectScript } from '../../types/script.types.js';
+import { readProjectPreferences } from '../../types/project-preferences.types.js';
 import { parseSceneImageKeys } from '../pipeline/flux-stage.service.js';
 import {
   concatSceneClips,
@@ -37,6 +38,7 @@ export async function runCloudRenderStage(projectId: string): Promise<{ videoKey
   }
 
   const script = parseProjectScript(project.script);
+  const preferences = readProjectPreferences(project);
   const missingImages = project.scenes.filter((scene) => parseSceneImageKeys(scene).length === 0);
 
   if (missingImages.length) {
@@ -90,6 +92,7 @@ export async function runCloudRenderStage(projectId: string): Promise<{ videoKey
       })),
       totalAudioSec: totalSceneDuration,
       audioPath,
+      captionStyle: preferences.captionStyle,
     });
 
     const finalBuffer = await mergeVideoAudioSubtitles({

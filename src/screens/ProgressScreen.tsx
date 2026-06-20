@@ -16,7 +16,6 @@ import {
   canRetryPcRender,
   formatProjectError,
   isTerminalStatus,
-  isThumbnailReady,
   statusLabel,
 } from '../utils/pipeline';
 import { colors, spacing } from '../theme/colors';
@@ -48,13 +47,8 @@ export function ProgressScreen({ navigation, route }: Props) {
       return false;
     }
 
-    if (isThumbnailReady(next.status) && next.status === 'narration_ready') {
-      navigation.replace('ProjectDetail', { projectId });
-      return false;
-    }
-
     return true;
-  }, [projectId, handleDone, navigation]);
+  }, [projectId, handleDone]);
 
   useAutoRetryOnError({
     projectId,

@@ -2,7 +2,6 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   FlatList,
   Image,
   Pressable,
@@ -12,6 +11,7 @@ import {
   View,
 } from 'react-native';
 import { checkApiHealth, deleteProject, listProjects } from '../api/client';
+import { ConfirmDialog } from '../components/ConfirmDialog';
 import { PrimaryButton } from '../components/PrimaryButton';
 import { ScreenContainer } from '../components/ScreenContainer';
 import { API_BASE_URL } from '../config/api';
@@ -28,6 +28,8 @@ export function HomeScreen({ navigation }: Props) {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<ProjectListItem | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const loadProjects = useCallback(async () => {
     try {
@@ -63,30 +65,34 @@ export function HomeScreen({ navigation }: Props) {
   }
 
   function confirmDeleteProject(item: ProjectListItem) {
-    const title = item.title ?? 'Untitled Short';
-
-    Alert.alert(
-      'Delete project?',
-      `Remove "${title}" and all its images, audio, and video from cloud storage. This cannot be undone.`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: () => handleDeleteProject(item.id),
-        },
-      ],
-    );
+    setDeleteError(null);
+    setDeleteTarget(item);
   }
 
-  async function handleDeleteProject(projectId: string) {
+  function closeDeleteDialog() {
+    if (deletingId) {
+      return;
+    }
+
+    setDeleteTarget(null);
+    setDeleteError(null);
+  }
+
+  async function handleDeleteProject() {
+    if (!deleteTarget) {
+      return;
+    }
+
+    const projectId = deleteTarget.id;
     setDeletingId(projectId);
+    setDeleteError(null);
 
     try {
       await deleteProject(projectId);
       setProjects((current) => current.filter((item) => item.id !== projectId));
-    } catch {
-      Alert.alert('Delete failed', 'Could not delete this project. Pull to refresh and try again.');
+      setDeleteTarget(null);
+    } catch (err) {
+      setDeleteError(err instanceof Error ? err.message : 'Could not delete this project');
     } finally {
       setDeletingId(null);
     }
@@ -200,6 +206,18 @@ export function HomeScreen({ navigation }: Props) {
           disabled={apiOnline === false}
         />
       </View>
+
+      <ConfirmDialog
+        visible={deleteTarget !== null}
+        title="Delete this project?"
+        projectTitle={deleteTarget?.title ?? 'Untitled Short'}
+        message="This permanently removes the project from your account, clears queued jobs in Upstash, and deletes all images, audio, and video from Cloudflare R2 storage."
+        error={deleteError}
+        confirmLabel="Delete permanently"
+        loading={deletingId !== null}
+        onCancel={closeDeleteDialog}
+        onConfirm={handleDeleteProject}
+      />
     </ScreenContainer>
   );
 }

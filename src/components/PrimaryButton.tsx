@@ -13,7 +13,7 @@ type Props = {
   onPress: () => void;
   disabled?: boolean;
   loading?: boolean;
-  variant?: 'primary' | 'secondary';
+  variant?: 'primary' | 'secondary' | 'destructive';
   style?: ViewStyle;
 };
 
@@ -26,6 +26,7 @@ export function PrimaryButton({
   style,
 }: Props) {
   const isPrimary = variant === 'primary';
+  const isDestructive = variant === 'destructive';
 
   return (
     <Pressable
@@ -34,14 +35,18 @@ export function PrimaryButton({
       onPress={onPress}
       style={({ pressed }) => [
         styles.base,
-        isPrimary ? styles.primary : styles.secondary,
+        isDestructive ? styles.destructive : isPrimary ? styles.primary : styles.secondary,
         (disabled || loading) && styles.disabled,
         pressed && !disabled && !loading && styles.pressed,
         style,
       ]}>
       <View style={styles.content}>
         {loading ? <ActivityIndicator color={isPrimary ? '#fff' : colors.accentSoft} /> : null}
-        <Text style={[styles.label, isPrimary ? styles.primaryLabel : styles.secondaryLabel]}>
+        <Text
+          style={[
+            styles.label,
+            isDestructive || isPrimary ? styles.primaryLabel : styles.secondaryLabel,
+          ]}>
           {label}
         </Text>
       </View>
@@ -64,6 +69,9 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surfaceAlt,
     borderWidth: 1,
     borderColor: colors.border,
+  },
+  destructive: {
+    backgroundColor: colors.error,
   },
   disabled: {
     opacity: 0.55,

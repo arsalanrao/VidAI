@@ -43,10 +43,12 @@ async function parseJson<T>(response: Response): Promise<T> {
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const hasBody = init?.body !== undefined && init?.body !== null && init?.body !== '';
+
   const response = await fetch(`${API_BASE_URL}${path}`, {
     ...init,
     headers: {
-      'Content-Type': 'application/json',
+      ...(hasBody ? { 'Content-Type': 'application/json' } : {}),
       ...(init?.headers ?? {}),
     },
   });
@@ -152,9 +154,18 @@ export async function regenerateScene(projectId: string, sceneId: string): Promi
 }
 
 export async function deleteProject(projectId: string): Promise<ActionResponse> {
-  return request<ActionResponse>(`/api/project/${projectId}`, {
+  const response = await fetch(`${API_BASE_URL}/api/project/${projectId}`, {
     method: 'DELETE',
   });
+
+  const body = await parseJson<ActionResponse & { error?: string; message?: string }>(response);
+
+  if (!response.ok) {
+    const message = body.error ?? body.message ?? `Delete failed (${response.status})`;
+    throw new ApiError(response.status, message);
+  }
+
+  return body;
 }
 
 export { ApiError };
