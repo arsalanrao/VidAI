@@ -35,6 +35,13 @@ local.properties
 !debug.keystore
 .kotlin/
 
+ai-server/venv/
+ai-server/venv312/
+ai-server/outputs/
+ai-server/__pycache__/
+ai-server/.env
+ai-server/.pytest_cache/
+
 # Secrets
 .env
 .env.local

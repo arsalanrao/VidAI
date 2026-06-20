@@ -692,7 +692,7 @@ backend/
 
 **Your job:** Listen to the WAV file — clear voice?
 
-- [ ] Narration audio works (Magpie or Chatterbox fallback → R2 as narration.wav)
+- [x] Narration audio works (Magpie → R2 as narration.wav) ✅ verified
 
 **Success status:** `narration_ready`. Result includes signed `narrationUrl` (play in browser).
 
@@ -727,26 +727,34 @@ pm2 start dist/workers/pipeline.worker.js --name worker
 
 ### 13.1 Create `ai-server` folder
 
-**Cursor job:** Create on your PC:
+**Done in repo.** See **`ai-server/README.md`** for full setup.
 
 ```
 ai-server/
   main.py          # FastAPI web server
-  sd_video.py      # Stable Video Diffusion
+  sd_video.py      # Stable Video Diffusion (RTX 3070 tuned)
   ffmpeg_merge.py  # Merge clips + audio
   download.py      # Download images from URLs
   requirements.txt
-  .env
+  .env.example
+  test-local.ps1
 ```
+
+Copy `.env.example` → `.env` and set `PC_API_SECRET` (same value you'll use on Render in Step 14).
 
 ### 13.2 Install Python packages
 
 **Your job (PowerShell):**
 ```powershell
 cd d:\git\apps\VidAiPro\ai-server
-python -m venv venv
+
+# Python 3.12 required — 3.14 has no CUDA PyTorch wheels
+winget install Python.Python.3.12
+py -3.12 -m venv venv
 .\venv\Scripts\activate
-pip install torch torchvision --index-url https://download.pytorch.org/whl/cu118
+python --version
+
+pip install torch torchvision --index-url https://download.pytorch.org/whl/cu124
 pip install -r requirements.txt
 ```
 
@@ -756,12 +764,19 @@ First run downloads **large** AI models (many GB). Be patient.
 
 **Your job:**
 ```powershell
+cd d:\git\apps\VidAiPro\ai-server
+.\venv\Scripts\activate
 uvicorn main:app --host 127.0.0.1 --port 8000
 ```
 
-Ask Cursor to send a test request.
+In another PowerShell window:
+```powershell
+Invoke-RestMethod http://127.0.0.1:8000/health
+```
 
-**Success:** A short `.mp4` file appears.
+Then run `test-local.ps1` with a signed scene JPG URL from a `narration_ready` project (edit secret + URL in the script).
+
+**Success:** JSON returns `video_path` — open that `.mp4` locally.
 
 - [ ] Python venv created
 - [ ] SVD produces a test video on 3070
@@ -776,19 +791,66 @@ Ask Cursor to send a test request.
 
 **Best method: Cloudflare Tunnel**
 
-**Your job:**
-1. Install `cloudflared` on Windows.  
-2. Create tunnel `vidaipro-ai` → `http://localhost:8000`  
-3. Get URL like `https://ai.yourdomain.com`  
-4. Put in server `.env`: `PC_SERVER_URL=https://ai.yourdomain.com`  
-5. Same secret: `PC_API_SECRET` on both sides  
+### A. Quick tunnel (testing — no domain)
 
-**Success:** From VPS, health check to PC returns OK (only with secret header).
+1. ai-server running on PC:
+   ```powershell
+   cd D:\git\apps\VidAiPro\ai-server
+   .\venv312\Scripts\Activate.ps1
+   uvicorn main:app --host 127.0.0.1 --port 8000
+   ```
+2. Install cloudflared:
+   ```powershell
+   .\install-cloudflared.ps1
+   ```
+3. Start quick tunnel (new PowerShell window):
+   ```powershell
+   .\start-tunnel-quick.ps1
+   ```
+4. Copy the `https://xxxx.trycloudflare.com` URL from the output.
+5. On **Render** dashboard → `vidaipro-api` → Environment:
+   - `PC_SERVER_URL` = `https://xxxx.trycloudflare.com` (no trailing slash)
+   - `PC_API_SECRET` = same value as `ai-server/.env`
+6. Redeploy Render (or wait for env reload).
+7. Test from PC:
+   ```powershell
+   .\test-tunnel-from-render.ps1
+   ```
+   Or open: `https://vidai-nw8e.onrender.com/health/pc`
+
+**Success:** JSON shows `"ok": true` and your GPU info from the PC.
+
+### B. Named tunnel (production — your domain)
+
+1. Install `cloudflared` (same as above).
+2. Run `.\start-tunnel.ps1` — follow printed steps for login, tunnel create, DNS.
+3. Set `PC_SERVER_URL=https://ai.yourdomain.com` on Render.
+
+### Secrets
+
+| Location | Variable |
+|----------|----------|
+| `ai-server/.env` | `PC_API_SECRET` |
+| Render env | `PC_API_SECRET` (must match exactly) |
+
+Use a long random string (not the default `change-me-...` in production).
+
+### Dispatch test (after health OK)
+
+When a project is `narration_ready`:
+
+```powershell
+Invoke-RestMethod -Method POST "https://vidai-nw8e.onrender.com/api/project/PROJECT_ID/dispatch-render"
+```
+
+This sends scenes + narration to your PC for SVD rendering (~4 min per scene).
 
 - [ ] Tunnel running
-- [ ] PC server reachable from VPS
+- [ ] `PC_SERVER_URL` + `PC_API_SECRET` on Render
+- [ ] `/health/pc` returns OK from Render
+- [ ] Optional: `dispatch-render` completes on PC
 
-**Tell Cursor:** *“Do Step 14 — dispatcher with API key auth”*
+**Tell Cursor:** *“Do Step 15 — wire full pipeline + webhook”*
 
 ---
 
@@ -928,7 +990,7 @@ Copy this to the top of your notes and update:
 ```
 Hosting path: Path B (Premium + Render + PC)
 Last completed step: Step 11 ✅ (TTS narration)
-Next step: Step 13 — PC ai-server (SVD + FFmpeg)
+Next step: Step 13 — PC ai-server (install venv + test SVD locally)
 Blockers: none
 ```
 

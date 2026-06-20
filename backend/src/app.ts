@@ -10,6 +10,7 @@ import { isYtDlpAvailable, getYtDlpVersion, ensureYtDlpPath } from './services/y
 import { checkKimiConnection } from './services/ai/kimi.service.js';
 import { checkFluxConnection } from './services/ai/flux.service.js';
 import { checkTtsConnection, listChatterboxVoices, listMagpieGrpcVoices, listMagpieVoices } from './services/ai/tts.service.js';
+import { checkPcHealth, pcRendererConfigured } from './services/pc/pc-render.service.js';
 import type { Worker } from 'bullmq';
 
 let worker: Worker | undefined;
@@ -137,6 +138,16 @@ async function buildApp() {
       const message = err instanceof Error ? err.message : 'Failed to list voices';
       return reply.status(503).send({ ok: false, provider, error: message });
     }
+  });
+
+  app.get('/health/pc', async (_req, reply) => {
+    const result = await checkPcHealth();
+
+    if (!result.ok) {
+      return reply.status(result.configured ? 503 : 503).send(result);
+    }
+
+    return result;
   });
 
   app.get('/health/moonshot', async (_req, reply) => {

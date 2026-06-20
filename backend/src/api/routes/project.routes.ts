@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { prisma } from '../../db/client.js';
 import { videoQueue } from '../../queues/video.queue.js';
 import { resolveAssetUrl } from '../../services/pipeline/flux-stage.service.js';
+import { dispatchProjectRender, pcRendererConfigured } from '../../services/pc/pc-render.service.js';
 
 export async function registerProjectRoutes(app: FastifyInstance): Promise<void> {
   app.post<{ Body: { youtubeUrl?: string } }>('/api/project/create', async (request, reply) => {
@@ -43,6 +44,23 @@ export async function registerProjectRoutes(app: FastifyInstance): Promise<void>
     }
 
     return reply.send(project);
+  });
+
+  app.post<{ Params: { id: string } }>('/api/project/:id/dispatch-render', async (request, reply) => {
+    if (!pcRendererConfigured) {
+      return reply.status(503).send({
+        error: 'PC renderer not configured',
+        hint: 'Set PC_SERVER_URL and PC_API_SECRET on Render',
+      });
+    }
+
+    const result = await dispatchProjectRender(request.params.id);
+
+    if (!result.ok) {
+      return reply.status(result.message.includes('not found') ? 404 : 503).send(result);
+    }
+
+    return reply.send(result);
   });
 
   app.get<{ Params: { id: string } }>('/api/project/:id/result', async (request, reply) => {
