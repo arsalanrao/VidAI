@@ -3,8 +3,10 @@ import { env } from '../../config/env.js';
 // NVIDIA Build — https://build.nvidia.com/black-forest-labs/flux_2-klein-4b
 const FLUX_URL = 'https://ai.api.nvidia.com/v1/genai/black-forest-labs/flux.2-klein-4b';
 
-export const FLUX_WIDTH = 1536;
-export const FLUX_HEIGHT = 2730;
+// NVIDIA NIM only accepts width/height from a fixed enum (768–1344).
+// 768×1344 is portrait 9:16 — valid for Shorts. FFmpeg upscales during render.
+export const FLUX_WIDTH = 768;
+export const FLUX_HEIGHT = 1344;
 export const FLUX_STEPS = 4;
 export const FLUX_MAX_ATTEMPTS = 5;
 
@@ -29,6 +31,12 @@ type FluxPayload = {
   seed: number;
   steps: number;
 };
+
+const FLUX_FALLBACK_SIZES: Array<{ width: number; height: number }> = [
+  { width: FLUX_WIDTH, height: FLUX_HEIGHT },
+  { width: 832, height: 1216 },
+  { width: 1024, height: 1024 },
+];
 
 export class FluxContentFilteredError extends Error {
   finishReason: string;
@@ -72,7 +80,7 @@ function ensureVerticalPrompt(prompt: string): string {
     return trimmed;
   }
 
-  return `${trimmed}, vertical 9:16 cinematic photorealistic, dramatic lighting, film grain, high detail, 1536x2730 composition, no text, no watermark`;
+  return `${trimmed}, vertical 9:16 cinematic photorealistic, dramatic lighting, film grain, high detail, portrait composition, no text, no watermark`;
 }
 
 /** Progressively soften prompts when NVIDIA CONTENT_FILTERED triggers. */
@@ -167,9 +175,10 @@ async function invokeFlux(payload: FluxPayload): Promise<Buffer> {
       // keep raw text
     }
 
-    throw new Error(
-      `FLUX invocation failed (${response.status}): ${formatNvidiaError(errData, response.status)}`,
-    );
+    const detail = formatNvidiaError(errData, response.status);
+    const err = new Error(`FLUX invocation failed (${response.status}): ${detail}`);
+    (err as Error & { statusCode?: number }).statusCode = response.status;
+    throw err;
   }
 
   let data: FluxResponse;
@@ -212,10 +221,26 @@ function isRetryableFluxError(err: unknown): boolean {
   }
 
   if (err instanceof Error) {
-    return err.message.includes('CONTENT_FILTERED');
+    if (err.message.includes('CONTENT_FILTERED')) {
+      return true;
+    }
+
+    const statusCode = (err as Error & { statusCode?: number }).statusCode;
+    if (statusCode === 422) {
+      return true;
+    }
   }
 
   return false;
+}
+
+function isDimensionError(err: unknown): boolean {
+  if (!(err instanceof Error)) {
+    return false;
+  }
+
+  const statusCode = (err as Error & { statusCode?: number }).statusCode;
+  return statusCode === 422 || err.message.includes('422');
 }
 
 export async function generateFluxImage(prompt: string, seed = randomSeed()): Promise<Buffer> {
@@ -228,21 +253,31 @@ export async function generateFluxImageWithRetry(
 ): Promise<Buffer> {
   const maxAttempts = options?.maxAttempts ?? FLUX_MAX_ATTEMPTS;
   let lastError: Error | undefined;
+  let sizeIndex = 0;
 
   for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
     const softened = softenPromptForFilter(prompt, attempt);
     const seed = attempt === 0 && options?.seed !== undefined ? options.seed : randomSeed();
+    const size = FLUX_FALLBACK_SIZES[Math.min(sizeIndex, FLUX_FALLBACK_SIZES.length - 1)]!;
 
     try {
       return await invokeFlux({
         prompt: ensureVerticalPrompt(softened),
-        width: FLUX_WIDTH,
-        height: FLUX_HEIGHT,
+        width: size.width,
+        height: size.height,
         seed,
         steps: FLUX_STEPS,
       });
     } catch (err) {
       lastError = err instanceof Error ? err : new Error(String(err));
+
+      if (isDimensionError(err) && sizeIndex < FLUX_FALLBACK_SIZES.length - 1) {
+        sizeIndex += 1;
+        console.warn(
+          `[flux] dimension rejected (${size.width}x${size.height}), retrying ${FLUX_FALLBACK_SIZES[sizeIndex]!.width}x${FLUX_FALLBACK_SIZES[sizeIndex]!.height}`,
+        );
+        continue;
+      }
 
       if (!isRetryableFluxError(err) || attempt >= maxAttempts - 1) {
         throw lastError;
