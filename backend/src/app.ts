@@ -10,7 +10,7 @@ import { isYtDlpAvailable, getYtDlpVersion, ensureYtDlpPath } from './services/y
 import { checkKimiConnection } from './services/ai/kimi.service.js';
 import { checkFluxConnection } from './services/ai/flux.service.js';
 import { checkTtsConnection, listChatterboxVoices, listMagpieGrpcVoices, listMagpieVoices } from './services/ai/tts.service.js';
-import { checkFfmpegAvailable } from './services/video/ffmpeg.util.js';
+import { checkFfmpegAvailable, getRenderSettings } from './services/video/ffmpeg.util.js';
 import { registerWebhookRoutes } from './api/routes/webhook.routes.js';
 import type { Worker } from 'bullmq';
 
@@ -143,12 +143,18 @@ async function buildApp() {
 
   app.get('/health/ffmpeg', async (_req, reply) => {
     const result = await checkFfmpegAvailable();
+    const render = getRenderSettings();
 
     if (!result.ok) {
       return reply.status(503).send({ ok: false, ffmpeg: result.message });
     }
 
-    return { ok: true, ffmpeg: result.message };
+    return {
+      ok: true,
+      ffmpeg: result.message,
+      cloudRenderProfile: render.profile,
+      output: `${render.width}x${render.height}@${render.fps}fps`,
+    };
   });
 
   /** @deprecated PC rendering removed — cloud FFmpeg on Render is used instead */

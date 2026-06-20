@@ -7,8 +7,8 @@ export function computeCompletenessFromResult(project: ProjectResult): ProjectCo
 
   const script = Boolean(project.title);
   const thumbnail = Boolean(project.thumbnail);
-  const scenesTotal = project.scenes.length;
-  const scenesDone = project.scenes.filter((scene) => scene.complete ?? Boolean(scene.imageUrl)).length;
+  const scenesTotal = project.scenes?.length ?? 0;
+  const scenesDone = (project.scenes ?? []).filter((scene) => scene.complete ?? Boolean(scene.imageUrl)).length;
   const narration = Boolean(project.narrationUrl);
   const video = Boolean(project.videoUrl) || project.status === 'done';
   const uploadReady = project.status === 'done' && Boolean(project.videoUrl);

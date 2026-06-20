@@ -60,6 +60,8 @@ export type ProjectListItem = {
   errorMessage: string | null;
   updatedAt: string;
   youtubeUrl: string;
+  thumbnail: string | null;
+  videoUrl: string | null;
   completeness: ProjectCompleteness;
 };
 

@@ -122,7 +122,7 @@ export function ProjectDetailContent({
         <Text style={styles.description}>
           {project.description?.trim() || 'Description will appear after script generation.'}
         </Text>
-        {project.tags.length > 0 ? (
+        {project.tags && project.tags.length > 0 ? (
           <Text style={styles.tags}>{project.tags.map((t) => `#${t}`).join(' ')}</Text>
         ) : null}
       </View>
@@ -131,7 +131,7 @@ export function ProjectDetailContent({
         <Text style={styles.sectionTitle}>
           Scenes ({completeness.scenesDone}/{completeness.scenesTotal})
         </Text>
-        {project.scenes.map((scene) => {
+        {(project.scenes ?? []).map((scene) => {
           const complete = scene.complete ?? Boolean(scene.imageUrl);
 
           return (
@@ -180,7 +180,6 @@ export function ProjectDetailContent({
         {project.narrationUrl ? (
           <View style={styles.audioWrap}>
             <Video
-              audioOnly
               controls
               paused
               repeat={false}

@@ -4,7 +4,7 @@ import { ActivityIndicator, Image, StyleSheet, Text, View } from 'react-native';
 import { getProjectStatus, resumeProjectRender } from '../api/client';
 import { PrimaryButton } from '../components/PrimaryButton';
 import { ScreenContainer } from '../components/ScreenContainer';
-import { POLL_INTERVAL_MS } from '../config/api';
+import { pollIntervalForStatus } from '../config/api';
 import type { RootStackParamList } from '../navigation/types';
 import { colors, spacing } from '../theme/colors';
 
@@ -37,10 +37,10 @@ export function ThumbnailScreen({ navigation, route }: Props) {
         setNeedsRetry(status.status === 'waiting_for_renderer');
 
         if (status.status !== 'done' && status.status !== 'failed') {
-          timer = setTimeout(poll, POLL_INTERVAL_MS);
+          timer = setTimeout(poll, pollIntervalForStatus(status.status));
         }
       } catch {
-        timer = setTimeout(poll, POLL_INTERVAL_MS);
+        timer = setTimeout(poll, pollIntervalForStatus(undefined));
       }
     }
 

@@ -4,12 +4,48 @@ import { access } from 'node:fs/promises';
 import { constants } from 'node:fs';
 import ffmpegStatic from 'ffmpeg-static';
 import ffprobeStatic from 'ffprobe-static';
+import { env, type CloudRenderProfile } from '../../config/env.js';
 
 const execFileAsync = promisify(execFile);
 
+/** Full-quality Shorts output (local dev or paid Render plans). */
 export const OUTPUT_WIDTH = 1536;
 export const OUTPUT_HEIGHT = 2730;
 export const OUTPUT_FPS = 30;
+
+export type RenderSettings = {
+  profile: CloudRenderProfile;
+  width: number;
+  height: number;
+  fps: number;
+  preset: string;
+  crf: string;
+  ffmpegThreads: number;
+};
+
+export function getRenderSettings(): RenderSettings {
+  if (env.cloudRenderProfile === 'low') {
+    return {
+      profile: 'low',
+      width: 720,
+      height: 1280,
+      fps: 24,
+      preset: 'ultrafast',
+      crf: '26',
+      ffmpegThreads: 1,
+    };
+  }
+
+  return {
+    profile: 'standard',
+    width: OUTPUT_WIDTH,
+    height: OUTPUT_HEIGHT,
+    fps: OUTPUT_FPS,
+    preset: 'veryfast',
+    crf: '22',
+    ffmpegThreads: 0,
+  };
+}
 
 export class FFmpegError extends Error {
   stderr: string;
@@ -61,11 +97,16 @@ export async function resolveFfprobePath(): Promise<string> {
   throw new FFmpegError('ffprobe not found');
 }
 
-export async function runFfmpeg(args: string[]): Promise<void> {
+export async function runFfmpeg(args: string[], options?: { threads?: number }): Promise<void> {
   const ffmpeg = await resolveFfmpegPath();
+  const command = [...args];
+
+  if (options?.threads && options.threads > 0 && !command.includes('-threads')) {
+    command.unshift('-threads', String(options.threads));
+  }
 
   try {
-    await execFileAsync(ffmpeg, args, {
+    await execFileAsync(ffmpeg, command, {
       maxBuffer: 20 * 1024 * 1024,
       timeout: 20 * 60 * 1000,
     });

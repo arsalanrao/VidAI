@@ -6,6 +6,9 @@ import {
   S3Client,
 } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
+import { createWriteStream } from 'node:fs';
+import type { Readable } from 'node:stream';
+import { pipeline } from 'node:stream/promises';
 import { env, r2Configured } from '../../config/env.js';
 
 let client: S3Client | undefined;
@@ -31,7 +34,7 @@ function getClient(): S3Client {
 
 export type UploadOptions = {
   key: string;
-  body: Buffer | Uint8Array | string;
+  body: Buffer | Uint8Array | string | Readable;
   contentType: string;
   cacheControl?: string;
 };
@@ -65,6 +68,21 @@ export async function downloadObject(key: string): Promise<Buffer> {
   }
 
   return Buffer.from(await response.Body.transformToByteArray());
+}
+
+export async function downloadObjectToFile(key: string, filePath: string): Promise<void> {
+  const response = await getClient().send(
+    new GetObjectCommand({
+      Bucket: env.r2Bucket,
+      Key: key,
+    }),
+  );
+
+  if (!response.Body) {
+    throw new Error(`R2 object not found: ${key}`);
+  }
+
+  await pipeline(response.Body as Readable, createWriteStream(filePath));
 }
 
 export async function deleteObject(key: string): Promise<void> {

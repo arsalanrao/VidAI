@@ -1,15 +1,24 @@
+import { createReadStream } from 'node:fs';
+import { mkdir, mkdtemp, rm } from 'node:fs/promises';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
 import { prisma } from '../../db/client.js';
-import { downloadObject, projectKey, uploadObject } from '../storage/r2.service.js';
+import {
+  downloadObjectToFile,
+  projectKey,
+  uploadObject,
+} from '../storage/r2.service.js';
 import { r2Configured } from '../../config/env.js';
 import type { MotionPreset, ProjectScript } from '../../types/script.types.js';
 import { readProjectPreferences } from '../../types/project-preferences.types.js';
 import { parseSceneImageKeys } from '../pipeline/flux-stage.service.js';
 import {
-  concatSceneClips,
-  mergeVideoAudioSubtitles,
-  renderSceneMotionClip,
+  concatSceneClipFiles,
+  mergeVideoAudioSubtitlesToFile,
+  renderSceneMotionClipToFile,
 } from '../video/motion-engine.service.js';
 import { buildSceneCaptionsAss } from '../video/caption.service.js';
+import { getRenderSettings } from '../video/ffmpeg.util.js';
 
 function parseProjectScript(script: unknown): ProjectScript {
   if (!script || typeof script !== 'object') {
@@ -45,40 +54,55 @@ export async function runCloudRenderStage(projectId: string): Promise<{ videoKey
     throw new Error(`${missingImages.length} scene(s) missing images — run FLUX stage first`);
   }
 
+  const renderSettings = getRenderSettings();
+  console.log(
+    `[cloud-render] ${projectId} profile=${renderSettings.profile} ${renderSettings.width}x${renderSettings.height}`,
+  );
+
   await prisma.project.update({
     where: { id: projectId },
     data: { status: 'rendering', errorMessage: null },
   });
 
-  const sceneClips: Buffer[] = [];
-
-  for (const [index, scene] of project.scenes.entries()) {
-    const imageKeys = parseSceneImageKeys(scene);
-    const imageBuffers = await Promise.all(imageKeys.map((key) => downloadObject(key)));
-    const scriptScene = script.scenes[index];
-    const durationSec = scene.duration || scriptScene?.duration || 4;
-    const motionPreset = (scene.motionPreset ?? scriptScene?.motionPreset ?? 'cinematic') as MotionPreset;
-
-    const clip = await renderSceneMotionClip({
-      imageBuffers,
-      durationSec,
-      motionPreset,
-    });
-
-    sceneClips.push(clip);
-  }
-
-  const mergedVideo = await concatSceneClips(sceneClips);
-  const audioBuffer = await downloadObject(project.narrationUrl);
-
-  const { mkdtemp, writeFile, rm } = await import('node:fs/promises');
-  const { join } = await import('node:path');
-  const { tmpdir } = await import('node:os');
   const workDir = await mkdtemp(join(tmpdir(), 'vidaipro-render-'));
+  const sceneClipPaths: string[] = [];
   const audioPath = join(workDir, 'narration.wav');
+  const mergedPath = join(workDir, 'merged.mp4');
+  const finalPath = join(workDir, 'final.mp4');
 
   try {
-    await writeFile(audioPath, audioBuffer);
+    await downloadObjectToFile(project.narrationUrl, audioPath);
+
+    for (const [index, scene] of project.scenes.entries()) {
+      const imageKeys = parseSceneImageKeys(scene);
+      const sceneDir = join(workDir, `scene_${index}`);
+      await mkdir(sceneDir, { recursive: true });
+
+      const imagePaths: string[] = [];
+
+      for (const [imageIndex, key] of imageKeys.entries()) {
+        const imagePath = join(sceneDir, `img_${imageIndex}.jpg`);
+        await downloadObjectToFile(key, imagePath);
+        imagePaths.push(imagePath);
+      }
+
+      const scriptScene = script.scenes[index];
+      const durationSec = scene.duration || scriptScene?.duration || 4;
+      const motionPreset = (scene.motionPreset ?? scriptScene?.motionPreset ?? 'cinematic') as MotionPreset;
+      const clipPath = join(workDir, `scene_${index}.mp4`);
+
+      await renderSceneMotionClipToFile({
+        imagePaths,
+        durationSec,
+        motionPreset,
+        outputPath: clipPath,
+        workDir: join(sceneDir, 'segments'),
+      });
+
+      sceneClipPaths.push(clipPath);
+    }
+
+    await concatSceneClipFiles(sceneClipPaths, mergedPath);
 
     const totalSceneDuration = project.scenes.reduce(
       (sum, scene, index) => sum + (scene.duration || script.scenes[index]?.duration || 4),
@@ -95,17 +119,18 @@ export async function runCloudRenderStage(projectId: string): Promise<{ videoKey
       captionStyle: preferences.captionStyle,
     });
 
-    const finalBuffer = await mergeVideoAudioSubtitles({
-      videoBuffer: mergedVideo,
-      audioBuffer,
+    await mergeVideoAudioSubtitlesToFile({
+      videoPath: mergedPath,
+      audioPath,
       subtitlePath: assPath,
+      outputPath: finalPath,
     });
 
     const videoKey = projectKey(projectId, 'final.mp4');
 
     await uploadObject({
       key: videoKey,
-      body: finalBuffer,
+      body: createReadStream(finalPath),
       contentType: 'video/mp4',
       cacheControl: 'public, max-age=31536000',
     });

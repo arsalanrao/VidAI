@@ -20,7 +20,7 @@ import {
 import { ProjectDetailContent, SceneImage } from '../components/ProjectDetailContent';
 import { PrimaryButton } from '../components/PrimaryButton';
 import { ScreenContainer } from '../components/ScreenContainer';
-import { POLL_INTERVAL_MS } from '../config/api';
+import { pollIntervalForStatus } from '../config/api';
 import { useAutoRetryOnError } from '../hooks/useAutoRetryOnError';
 import type { RootStackParamList } from '../navigation/types';
 import type { ProjectResult, SceneResult } from '../types/project';
@@ -73,7 +73,7 @@ export function ProjectDetailScreen({ navigation, route }: Props) {
       return;
     }
 
-    const timer = setInterval(load, POLL_INTERVAL_MS);
+    const timer = setInterval(load, pollIntervalForStatus(project.status));
     return () => clearInterval(timer);
   }, [project?.status, load]);
 

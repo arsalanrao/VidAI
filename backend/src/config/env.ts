@@ -38,8 +38,22 @@ function normalizeRedisUrl(raw: string): string {
   return value;
 }
 
+export type CloudRenderProfile = 'low' | 'standard';
+
+function resolveCloudRenderProfile(): CloudRenderProfile {
+  const raw = optional('CLOUD_RENDER_PROFILE', '').toLowerCase();
+
+  if (raw === 'low' || raw === 'standard') {
+    return raw;
+  }
+
+  // Render free tier is 512 MB — FFmpeg at 1536×2730 OOMs without the low profile.
+  return optional('NODE_ENV', 'development') === 'production' ? 'low' : 'standard';
+}
+
 export const env = {
   nodeEnv: optional('NODE_ENV', 'development'),
+  cloudRenderProfile: resolveCloudRenderProfile(),
   port: Number(optional('PORT', '3000')),
   databaseUrl: required('DATABASE_URL'),
   redisUrl: normalizeRedisUrl(required('REDIS_URL')),

@@ -3,14 +3,24 @@ import { useState } from 'react';
 import {
   KeyboardAvoidingView,
   Platform,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from 'react-native';
 import { ApiError, createProject } from '../api/client';
+import { OptionPicker } from '../components/OptionPicker';
 import { PrimaryButton } from '../components/PrimaryButton';
 import { ScreenContainer } from '../components/ScreenContainer';
+import {
+  CAPTION_STYLES,
+  DEFAULT_PREFERENCES,
+  MOTION_STYLES,
+  VISUAL_THEMES,
+  VOICE_PRESETS,
+  type ProjectPreferences,
+} from '../constants/creativeOptions';
 import type { RootStackParamList } from '../navigation/types';
 import { colors, spacing } from '../theme/colors';
 
@@ -20,6 +30,11 @@ export function CreateProjectScreen({ navigation }: Props) {
   const [url, setUrl] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [preferences, setPreferences] = useState<ProjectPreferences>(DEFAULT_PREFERENCES);
+
+  function updatePreference<K extends keyof ProjectPreferences>(key: K, value: ProjectPreferences[K]) {
+    setPreferences((current) => ({ ...current, [key]: value }));
+  }
 
   async function handleSubmit() {
     const trimmed = url.trim();
@@ -38,7 +53,7 @@ export function CreateProjectScreen({ navigation }: Props) {
     setLoading(true);
 
     try {
-      const result = await createProject(trimmed);
+      const result = await createProject(trimmed, preferences);
       navigation.replace('Progress', { projectId: result.projectId });
     } catch (err) {
       const message = err instanceof ApiError ? err.message : 'Could not start project';
@@ -53,10 +68,14 @@ export function CreateProjectScreen({ navigation }: Props) {
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         style={styles.flex}>
-        <View style={styles.content}>
+        <ScrollView
+          style={styles.scroll}
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled">
           <Text style={styles.title}>Paste YouTube URL</Text>
           <Text style={styles.subtitle}>
-            Use a Shorts link. We will analyze it and build a new version.
+            Use a Shorts link. We will analyze it and build a new version with your creative style.
           </Text>
 
           <TextInput
@@ -70,8 +89,35 @@ export function CreateProjectScreen({ navigation }: Props) {
             onChangeText={setUrl}
           />
 
+          <View style={styles.options}>
+            <OptionPicker
+              label="Theme"
+              options={VISUAL_THEMES}
+              value={preferences.visualTheme}
+              onChange={(value) => updatePreference('visualTheme', value)}
+            />
+            <OptionPicker
+              label="Motion"
+              options={MOTION_STYLES}
+              value={preferences.motionStyle}
+              onChange={(value) => updatePreference('motionStyle', value)}
+            />
+            <OptionPicker
+              label="Voice"
+              options={VOICE_PRESETS}
+              value={preferences.voicePreset}
+              onChange={(value) => updatePreference('voicePreset', value)}
+            />
+            <OptionPicker
+              label="Caption Style"
+              options={CAPTION_STYLES}
+              value={preferences.captionStyle}
+              onChange={(value) => updatePreference('captionStyle', value)}
+            />
+          </View>
+
           {error ? <Text style={styles.error}>{error}</Text> : null}
-        </View>
+        </ScrollView>
 
         <PrimaryButton label="Start pipeline" loading={loading} onPress={handleSubmit} />
       </KeyboardAvoidingView>
@@ -85,9 +131,13 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingBottom: spacing.lg,
   },
-  content: {
+  scroll: {
+    flex: 1,
+  },
+  scrollContent: {
     gap: spacing.md,
     paddingTop: spacing.xl,
+    paddingBottom: spacing.md,
   },
   title: {
     color: colors.text,
@@ -109,6 +159,10 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.md,
     color: colors.text,
     fontSize: 16,
+  },
+  options: {
+    gap: spacing.md,
+    marginTop: spacing.sm,
   },
   error: {
     color: colors.error,

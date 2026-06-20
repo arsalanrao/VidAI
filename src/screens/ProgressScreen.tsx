@@ -8,7 +8,7 @@ import {
 import { PipelineSteps } from '../components/PipelineSteps';
 import { PrimaryButton } from '../components/PrimaryButton';
 import { ScreenContainer } from '../components/ScreenContainer';
-import { POLL_INTERVAL_MS } from '../config/api';
+import { pollIntervalForStatus } from '../config/api';
 import { useAutoRetryOnError } from '../hooks/useAutoRetryOnError';
 import type { RootStackParamList } from '../navigation/types';
 import type { ProjectStatus, ProjectStatusResponse } from '../types/project';
@@ -69,7 +69,7 @@ export function ProgressScreen({ navigation, route }: Props) {
           return;
         }
 
-        timer = setTimeout(poll, POLL_INTERVAL_MS);
+        timer = setTimeout(poll, pollIntervalForStatus(status?.status));
       } catch (err) {
         if (cancelled) {
           return;
@@ -77,7 +77,7 @@ export function ProgressScreen({ navigation, route }: Props) {
 
         const message = err instanceof Error ? err.message : 'Could not reach API';
         setPollError(message);
-        timer = setTimeout(poll, POLL_INTERVAL_MS);
+        timer = setTimeout(poll, pollIntervalForStatus(status?.status));
       }
     }
 
@@ -89,7 +89,7 @@ export function ProgressScreen({ navigation, route }: Props) {
         clearTimeout(timer);
       }
     };
-  }, [pollOnce]);
+  }, [pollOnce, status?.status]);
 
   const handleRetryPcRender = async () => {
     setRetrying(true);

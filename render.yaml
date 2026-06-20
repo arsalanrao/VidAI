@@ -15,6 +15,10 @@ services:
         value: production
       - key: RUN_WORKER
         value: "true"
+      - key: NODE_OPTIONS
+        value: "--max-old-space-size=384"
+      - key: CLOUD_RENDER_PROFILE
+        value: low
       - key: YTDLP_PATH
         value: ./bin/yt-dlp
       - key: PORT
