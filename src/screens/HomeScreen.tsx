@@ -2,14 +2,16 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   FlatList,
+  Image,
   Pressable,
   RefreshControl,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
-import { checkApiHealth, listProjects } from '../api/client';
+import { checkApiHealth, deleteProject, listProjects } from '../api/client';
 import { PrimaryButton } from '../components/PrimaryButton';
 import { ScreenContainer } from '../components/ScreenContainer';
 import { API_BASE_URL } from '../config/api';
@@ -25,6 +27,7 @@ export function HomeScreen({ navigation }: Props) {
   const [projects, setProjects] = useState<ProjectListItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const loadProjects = useCallback(async () => {
     try {
@@ -59,33 +62,92 @@ export function HomeScreen({ navigation }: Props) {
     navigation.navigate('ProjectDetail', { projectId: item.id });
   }
 
+  function confirmDeleteProject(item: ProjectListItem) {
+    const title = item.title ?? 'Untitled Short';
+
+    Alert.alert(
+      'Delete project?',
+      `Remove "${title}" and all its images, audio, and video from cloud storage. This cannot be undone.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: () => handleDeleteProject(item.id),
+        },
+      ],
+    );
+  }
+
+  async function handleDeleteProject(projectId: string) {
+    setDeletingId(projectId);
+
+    try {
+      await deleteProject(projectId);
+      setProjects((current) => current.filter((item) => item.id !== projectId));
+    } catch {
+      Alert.alert('Delete failed', 'Could not delete this project. Pull to refresh and try again.');
+    } finally {
+      setDeletingId(null);
+    }
+  }
+
   function renderProject({ item }: { item: ProjectListItem }) {
     const incomplete = isProjectIncomplete(item.status);
     const hasError = Boolean(item.errorMessage);
+    const canWatch = item.status === 'done' && Boolean(item.videoUrl);
+    const completeness = item.completeness ?? { percent: 0, scenesDone: 0, scenesTotal: 0 };
+    const isDeleting = deletingId === item.id;
 
     return (
       <Pressable
         style={[styles.projectCard, hasError && styles.projectCardError]}
-        onPress={() => openProject(item)}>
-        <View style={styles.projectHeader}>
-          <Text style={styles.projectTitle} numberOfLines={2}>
-            {item.title ?? 'Untitled Short'}
-          </Text>
-          <Text style={styles.projectPercent}>{item.completeness.percent}%</Text>
+        onPress={() => openProject(item)}
+        disabled={isDeleting}>
+        <View style={styles.cardRow}>
+          {item.thumbnail ? (
+            <Image resizeMode="cover" source={{ uri: item.thumbnail }} style={styles.thumb} />
+          ) : (
+            <View style={styles.thumbPlaceholder}>
+              <Text style={styles.thumbPlaceholderText}>No thumb</Text>
+            </View>
+          )}
+
+          <View style={styles.cardBody}>
+            <View style={styles.projectHeader}>
+              <Text style={styles.projectTitle} numberOfLines={2}>
+                {item.title ?? 'Untitled Short'}
+              </Text>
+              <View style={styles.headerActions}>
+                <Text style={styles.projectPercent}>{completeness.percent}%</Text>
+                <Pressable
+                  hitSlop={8}
+                  onPress={() => confirmDeleteProject(item)}
+                  disabled={isDeleting}
+                  style={styles.deleteBtn}>
+                  {isDeleting ? (
+                    <ActivityIndicator size="small" color={colors.error} />
+                  ) : (
+                    <Text style={styles.deleteText}>Delete</Text>
+                  )}
+                </Pressable>
+              </View>
+            </View>
+            <Text style={styles.projectStatus}>{statusLabel(item.status)}</Text>
+            <View style={styles.progressTrack}>
+              <View style={[styles.progressFill, { width: `${completeness.percent}%` }]} />
+            </View>
+            <Text style={styles.projectMeta}>
+              {completeness.scenesDone}/{completeness.scenesTotal} scenes
+              {canWatch ? ' · Tap to watch' : incomplete ? ' · Tap to continue' : ' · Complete'}
+            </Text>
+            {hasError ? (
+              <Text style={styles.projectError} numberOfLines={2}>
+                {item.errorMessage}
+              </Text>
+            ) : null}
+          </View>
         </View>
-        <Text style={styles.projectStatus}>{statusLabel(item.status)}</Text>
-        <View style={styles.progressTrack}>
-          <View style={[styles.progressFill, { width: `${item.completeness.percent}%` }]} />
-        </View>
-        <Text style={styles.projectMeta}>
-          {item.completeness.scenesDone}/{item.completeness.scenesTotal} scenes
-          {incomplete ? ' · Tap to continue' : ' · Complete'}
-        </Text>
-        {hasError ? (
-          <Text style={styles.projectError} numberOfLines={2}>
-            {item.errorMessage}
-          </Text>
-        ) : null}
       </Pressable>
     );
   }
@@ -222,15 +284,56 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     padding: spacing.md,
     marginBottom: spacing.sm,
-    gap: spacing.xs,
   },
   projectCardError: {
     borderColor: colors.error,
+  },
+  cardRow: {
+    flexDirection: 'row',
+    gap: spacing.md,
+  },
+  thumb: {
+    width: 72,
+    height: 96,
+    borderRadius: 10,
+    backgroundColor: colors.surfaceAlt,
+  },
+  thumbPlaceholder: {
+    width: 72,
+    height: 96,
+    borderRadius: 10,
+    backgroundColor: colors.surfaceAlt,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  thumbPlaceholderText: {
+    color: colors.textMuted,
+    fontSize: 10,
+    textAlign: 'center',
+  },
+  cardBody: {
+    flex: 1,
+    gap: spacing.xs,
   },
   projectHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     gap: spacing.sm,
+  },
+  headerActions: {
+    alignItems: 'flex-end',
+    gap: spacing.xs,
+  },
+  deleteBtn: {
+    paddingVertical: 2,
+    paddingHorizontal: spacing.xs,
+  },
+  deleteText: {
+    color: colors.error,
+    fontSize: 12,
+    fontWeight: '700',
   },
   projectTitle: {
     color: colors.text,

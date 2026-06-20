@@ -124,6 +124,34 @@ export async function checkR2Connection(): Promise<void> {
   );
 }
 
+export async function deleteObjectsWithPrefix(prefix: string): Promise<number> {
+  let deleted = 0;
+  let continuationToken: string | undefined;
+
+  do {
+    const listing = await getClient().send(
+      new ListObjectsV2Command({
+        Bucket: env.r2Bucket,
+        Prefix: prefix,
+        ContinuationToken: continuationToken,
+      }),
+    );
+
+    for (const object of listing.Contents ?? []) {
+      if (!object.Key) {
+        continue;
+      }
+
+      await deleteObject(object.Key);
+      deleted += 1;
+    }
+
+    continuationToken = listing.IsTruncated ? listing.NextContinuationToken : undefined;
+  } while (continuationToken);
+
+  return deleted;
+}
+
 export function projectKey(projectId: string, ...parts: string[]): string {
   return ['projects', projectId, ...parts].join('/');
 }

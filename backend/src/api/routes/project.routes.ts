@@ -4,19 +4,29 @@ import { videoQueue } from '../../queues/video.queue.js';
 import { resolveAssetUrl } from '../../services/pipeline/flux-stage.service.js';
 import { queueCloudRender } from '../../services/video/cloud-render-dispatch.service.js';
 import { computeCompleteness } from '../../services/project/completeness.service.js';
+import { deleteProject } from '../../services/project/delete-project.service.js';
+import { projectPreferencesSchema } from '../../types/project-preferences.types.js';
 
 export async function registerProjectRoutes(app: FastifyInstance): Promise<void> {
-  app.post<{ Body: { youtubeUrl?: string } }>('/api/project/create', async (request, reply) => {
+  app.post<{
+    Body: {
+      youtubeUrl?: string;
+      preferences?: Record<string, unknown>;
+    };
+  }>('/api/project/create', async (request, reply) => {
     const youtubeUrl = request.body?.youtubeUrl?.trim();
 
     if (!youtubeUrl) {
       return reply.status(400).send({ error: 'youtubeUrl is required' });
     }
 
+    const preferences = projectPreferencesSchema.parse(request.body?.preferences ?? {});
+
     const project = await prisma.project.create({
       data: {
         youtubeUrl,
         status: 'queued',
+        preferences,
       },
     });
 
@@ -34,21 +44,35 @@ export async function registerProjectRoutes(app: FastifyInstance): Promise<void>
     const projects = await prisma.project.findMany({
       orderBy: { updatedAt: 'desc' },
       take: limit,
-      include: {
+      select: {
+        id: true,
+        title: true,
+        status: true,
+        errorMessage: true,
+        updatedAt: true,
+        youtubeUrl: true,
+        thumbnail: true,
+        videoUrl: true,
+        script: true,
+        narrationUrl: true,
         scenes: { select: { imageUrl: true } },
       },
     });
 
     return reply.send({
-      projects: projects.map((project) => ({
-        id: project.id,
-        title: project.title,
-        status: project.status,
-        errorMessage: project.errorMessage,
-        updatedAt: project.updatedAt,
-        youtubeUrl: project.youtubeUrl,
-        completeness: computeCompleteness(project),
-      })),
+      projects: await Promise.all(
+        projects.map(async (project) => ({
+          id: project.id,
+          title: project.title,
+          status: project.status,
+          errorMessage: project.errorMessage,
+          updatedAt: project.updatedAt,
+          youtubeUrl: project.youtubeUrl,
+          thumbnail: await resolveAssetUrl(project.thumbnail),
+          videoUrl: await resolveAssetUrl(project.videoUrl),
+          completeness: computeCompleteness(project),
+        })),
+      ),
     });
   });
 
@@ -204,6 +228,21 @@ export async function registerProjectRoutes(app: FastifyInstance): Promise<void>
       });
     },
   );
+
+  app.delete<{ Params: { id: string } }>('/api/project/:id', async (request, reply) => {
+    try {
+      const result = await deleteProject(request.params.id);
+      return reply.send(result);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Delete failed';
+
+      if (message.includes('not found')) {
+        return reply.status(404).send({ error: message });
+      }
+
+      return reply.status(500).send({ error: message });
+    }
+  });
 
   app.get<{ Params: { id: string } }>('/api/project/:id/result', async (request, reply) => {
     const project = await prisma.project.findUnique({

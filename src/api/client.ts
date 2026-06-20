@@ -1,4 +1,5 @@
 import { API_BASE_URL, POLL_INTERVAL_MS } from '../config/api';
+import type { ProjectPreferences } from '../constants/creativeOptions';
 import type {
   ActionResponse,
   CreateProjectResponse,
@@ -61,14 +62,31 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export async function listProjects(limit = 50): Promise<ProjectListItem[]> {
-  const body = await request<{ projects: ProjectListItem[] }>(`/api/projects?limit=${limit}`);
-  return body.projects;
+  const body = await request<{ projects?: ProjectListItem[] }>(`/api/projects?limit=${limit}`);
+  const items = Array.isArray(body.projects) ? body.projects : [];
+
+  return items.map((item) => ({
+    ...item,
+    completeness: item.completeness ?? {
+      percent: 0,
+      script: false,
+      thumbnail: false,
+      scenesDone: 0,
+      scenesTotal: 0,
+      narration: false,
+      video: false,
+      uploadReady: false,
+    },
+  }));
 }
 
-export async function createProject(youtubeUrl: string): Promise<CreateProjectResponse> {
+export async function createProject(
+  youtubeUrl: string,
+  preferences?: ProjectPreferences,
+): Promise<CreateProjectResponse> {
   return request<CreateProjectResponse>('/api/project/create', {
     method: 'POST',
-    body: JSON.stringify({ youtubeUrl }),
+    body: JSON.stringify({ youtubeUrl, preferences }),
   });
 }
 
@@ -77,13 +95,19 @@ export async function getProjectStatus(projectId: string): Promise<ProjectStatus
 }
 
 export async function getProjectResult(projectId: string): Promise<ProjectResult> {
-  return request<ProjectResult>(`/api/project/${projectId}/result`);
+  const body = await request<ProjectResult>(`/api/project/${projectId}/result`);
+
+  return {
+    ...body,
+    tags: Array.isArray(body.tags) ? body.tags : [],
+    scenes: Array.isArray(body.scenes) ? body.scenes : [],
+  };
 }
 
 export async function checkApiHealth(): Promise<boolean> {
   try {
     const response = await fetch(`${API_BASE_URL}/health`);
-    const body = await response.json();
+    const body = (await response.json()) as { ok?: boolean };
     return Boolean(body.ok);
   } catch {
     return false;
@@ -124,6 +148,12 @@ export async function regenerateScene(projectId: string, sceneId: string): Promi
   return request<ActionResponse>(`/api/project/${projectId}/scenes/${sceneId}/regenerate`, {
     method: 'POST',
     body: '{}',
+  });
+}
+
+export async function deleteProject(projectId: string): Promise<ActionResponse> {
+  return request<ActionResponse>(`/api/project/${projectId}`, {
+    method: 'DELETE',
   });
 }
 
