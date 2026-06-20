@@ -238,13 +238,18 @@ def image_to_video(
             break
         except RuntimeError as exc:
             message = str(exc)
-            is_cuda = "CUDA" in message or "cuda" in message
+            is_cuda = "CUDA" in message or "cuda" in message or "engine to execute" in message
             if is_cuda and not cuda_retry:
-                logger.warning("CUDA error during SVD — reloading model and retrying once: %s", message)
+                logger.warning("CUDA/GPU error during SVD — reloading model and retrying once: %s", message)
                 _reset_pipeline()
                 pipe = _get_pipeline(model_id, hf_token)
                 cuda_retry = True
                 continue
+            if "engine to execute" in message or "paging file" in message.lower():
+                raise RuntimeError(
+                    "GPU ran out of memory. Close Chrome/other apps, increase Windows paging file "
+                    "(16 GB+ recommended), restart the PC, then tap Retry PC render."
+                ) from exc
             raise
         finally:
             if torch.cuda.is_available():
