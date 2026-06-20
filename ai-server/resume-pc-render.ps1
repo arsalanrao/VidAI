@@ -1,4 +1,4 @@
-# Resume PC render for a stuck project (bypasses Render PC_SERVER_URL — calls tunnel directly)
+# Resume PC render for a stuck project (bypasses Render PC_SERVER_URL - calls tunnel directly)
 param(
     [Parameter(Mandatory = $true)]
     [string]$ProjectId,
@@ -25,7 +25,7 @@ if (-not $Secret) {
     $Secret = Read-DotEnvValue "PC_API_SECRET" (Join-Path $PSScriptRoot ".env")
 }
 if (-not $Secret) {
-    throw "PC_API_SECRET not set — pass -Secret or add to ai-server/.env"
+    throw "PC_API_SECRET not set. Pass -Secret or add to ai-server/.env"
 }
 
 if (-not $PcTunnelUrl) {
@@ -35,7 +35,7 @@ if (-not $PcTunnelUrl) {
     }
 }
 if (-not $PcTunnelUrl) {
-    throw "PcTunnelUrl required — pass -PcTunnelUrl or save URL to ai-server/.pc-tunnel-url"
+    throw "PcTunnelUrl required. Pass -PcTunnelUrl or save URL to ai-server/.pc-tunnel-url"
 }
 
 $PcTunnelUrl = $PcTunnelUrl.TrimEnd("/")
@@ -48,7 +48,7 @@ Write-Host "PC OK: $($health.gpu.device_name)" -ForegroundColor Green
 Write-Host "Loading project $ProjectId from Render..." -ForegroundColor Cyan
 $result = Invoke-RestMethod "$RenderApi/api/project/$ProjectId/result" -TimeoutSec 30
 
-if (-not $result.narrationUrl) { throw "Project has no narration — run cloud pipeline first" }
+if (-not $result.narrationUrl) { throw "Project has no narration. Run cloud pipeline first." }
 if (-not $result.scenes -or $result.scenes.Count -eq 0) { throw "Project has no scenes" }
 
 Write-Host "Requesting R2 upload URL..." -ForegroundColor Cyan
@@ -73,7 +73,7 @@ $payload = @{
     )
 } | ConvertTo-Json -Depth 6 -Compress
 
-Write-Host "Starting PC render ($($result.scenes.Count) scenes) — reuse existing clips in outputs/$ProjectId/ ..." -ForegroundColor Yellow
+Write-Host "Starting PC render ($($result.scenes.Count) scenes). Reuses clips in outputs/$ProjectId/" -ForegroundColor Yellow
 Write-Host "This may take several minutes. Do not restart uvicorn." -ForegroundColor Yellow
 
 $response = Invoke-RestMethod -Method POST `
