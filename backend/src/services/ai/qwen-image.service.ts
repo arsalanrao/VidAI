@@ -133,7 +133,7 @@ export function isQwenImageConfigured(): boolean {
   return Boolean(resolveNimUrl());
 }
 
-function parseOpenAiImageResponse(data: OpenAiImageResponse): Buffer {
+async function parseOpenAiImageResponse(data: OpenAiImageResponse): Promise<Buffer> {
   const b64 = data.data?.[0]?.b64_json;
 
   if (b64) {
@@ -146,7 +146,13 @@ function parseOpenAiImageResponse(data: OpenAiImageResponse): Buffer {
     throw new Error(`Qwen image returned no image — ${formatNvidiaError(data, 200)}`);
   }
 
-  throw new Error('Qwen image returned URL only — set response_format to b64_json');
+  const imageResponse = await fetch(url);
+
+  if (!imageResponse.ok) {
+    throw new Error(`Failed to download Qwen image from URL (${imageResponse.status})`);
+  }
+
+  return Buffer.from(await imageResponse.arrayBuffer());
 }
 
 function parseNimInferResponse(data: NimInferResponse): Buffer {
@@ -170,10 +176,29 @@ function parseNimInferResponse(data: NimInferResponse): Buffer {
 
 async function invokeTogether(payload: QwenPayload): Promise<Buffer> {
   if (!env.togetherApiKey) {
-    throw new Error('TOGETHER_API_KEY not configured — get one at https://together.ai/models/qwen-image');
+    throw new Error(
+      'TOGETHER_API_KEY not configured — get one at https://api.together.ai/models/Qwen/Qwen-Image',
+    );
   }
 
   const { width, height } = resolveImageDimensions();
+
+  // Official API: https://api.together.ai/models/Qwen/Qwen-Image
+  // curl -X POST https://api.together.xyz/v1/images/generations \
+  //   -H "Authorization: Bearer $TOGETHER_API_KEY" \
+  //   -d '{"model":"Qwen/Qwen-Image","prompt":"..."}'
+  const body: Record<string, unknown> = {
+    model: resolveQwenModel(),
+    prompt: payload.prompt,
+    width,
+    height,
+    n: 1,
+    response_format: 'b64_json',
+  };
+
+  if (payload.seed > 0) {
+    body.seed = payload.seed;
+  }
 
   const response = await fetch(env.togetherImageUrl, {
     method: 'POST',
@@ -182,15 +207,7 @@ async function invokeTogether(payload: QwenPayload): Promise<Buffer> {
       Accept: 'application/json',
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({
-      model: resolveQwenModel(),
-      prompt: payload.prompt,
-      width,
-      height,
-      n: 1,
-      response_format: 'b64_json',
-      seed: payload.seed,
-    }),
+    body: JSON.stringify(body),
   });
 
   const rawText = await response.text();
@@ -218,7 +235,7 @@ async function invokeTogether(payload: QwenPayload): Promise<Buffer> {
     throw new Error('Together Qwen image returned invalid JSON response');
   }
 
-  return parseOpenAiImageResponse(data);
+  return await parseOpenAiImageResponse(data);
 }
 
 function buildNimRequestBody(url: string, payload: QwenPayload): Record<string, unknown> {
@@ -307,7 +324,7 @@ async function invokeNim(payload: QwenPayload): Promise<Buffer> {
   }
 
   if (isOpenAiImageUrl(url)) {
-    return parseOpenAiImageResponse(data);
+    return await parseOpenAiImageResponse(data);
   }
 
   return parseNimInferResponse(data);
