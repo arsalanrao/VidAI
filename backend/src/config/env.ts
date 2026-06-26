@@ -40,6 +40,27 @@ function normalizeRedisUrl(raw: string): string {
 
 export type CloudRenderProfile = 'low' | 'standard';
 
+export type QwenImageProvider = 'together' | 'nim';
+
+function resolveQwenImageProvider(): QwenImageProvider {
+  const raw = optional('QWEN_IMAGE_PROVIDER', '').toLowerCase();
+
+  if (raw === 'together' || raw === 'partner') {
+    return 'together';
+  }
+
+  if (raw === 'nim' || raw === 'self-hosted') {
+    return 'nim';
+  }
+
+  // Auto: prefer Together partner when API key is set (no GPU needed).
+  if (optional('TOGETHER_API_KEY')) {
+    return 'together';
+  }
+
+  return 'nim';
+}
+
 function resolveCloudRenderProfile(): CloudRenderProfile {
   const raw = optional('CLOUD_RENDER_PROFILE', '').toLowerCase();
 
@@ -60,14 +81,17 @@ export const env = {
   jwtSecret: optional('JWT_SECRET', 'dev-only-change-me'),
   nvidiaApiKey: optional('NVIDIA_API_KEY'),
   nvidiaApiKeyQwen: optional('NVIDIA_API_KEY_QWEN') || optional('NVIDIA_API_KEY'),
+  togetherApiKey: optional('TOGETHER_API_KEY'),
+  qwenImageProvider: resolveQwenImageProvider(),
   qwenImageEnabled: optional('QWEN_IMAGE_ENABLED', 'true') === 'true',
   qwenImageUrl: optional('QWEN_IMAGE_URL'),
   qwenImageBaseUrl: optional('QWEN_IMAGE_BASE_URL'),
   qwenImageApi: optional('QWEN_IMAGE_API', 'infer') === 'openai' ? 'openai' : 'infer',
-  qwenImageModel: optional('QWEN_IMAGE_MODEL', 'qwen/qwen-image-2512'),
+  qwenImageModel: optional('QWEN_IMAGE_MODEL'),
   qwenImageSeed: optional('QWEN_IMAGE_SEED', '0'),
   qwenImageAspectRatio: optional('QWEN_IMAGE_ASPECT_RATIO', '9:16'),
   qwenImageSize: optional('QWEN_IMAGE_SIZE'),
+  togetherImageUrl: optional('TOGETHER_IMAGE_URL', 'https://api.together.xyz/v1/images/generations'),
   moonshotApiKey: optional('MOONSHOT_API_KEY'),
   openaiApiKey: optional('OPENAI_API_KEY'),
   magpieApiKey: optional('MAGPIE_API_KEY'),

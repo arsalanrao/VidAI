@@ -9,7 +9,7 @@ import { checkR2Connection } from './services/storage/r2.service.js';
 import { isYtDlpAvailable, getYtDlpVersion, ensureYtDlpPath } from './services/youtube/ytdlp.service.js';
 import { checkKimiConnection } from './services/ai/kimi.service.js';
 import { checkFluxConnection } from './services/ai/flux.service.js';
-import { checkQwenImageConnection, getQwenImageEndpoint, isQwenImageConfigured } from './services/ai/qwen-image.service.js';
+import { checkQwenImageConnection, getQwenImageEndpoint, getQwenImageProvider, isQwenImageConfigured } from './services/ai/qwen-image.service.js';
 import { checkTtsConnection, listChatterboxVoices, listMagpieGrpcVoices, listMagpieVoices } from './services/ai/tts.service.js';
 import { checkFfmpegAvailable, getRenderSettings } from './services/video/ffmpeg.util.js';
 import { registerWebhookRoutes } from './api/routes/webhook.routes.js';
@@ -100,11 +100,17 @@ async function buildApp() {
   });
 
   app.get('/health/qwen-image', async (_req, reply) => {
+    const provider = getQwenImageProvider();
+
     if (!isQwenImageConfigured()) {
       return {
         ok: false,
-        qwenImage: 'NIM endpoint not configured — set QWEN_IMAGE_BASE_URL or QWEN_IMAGE_URL',
+        qwenImage: provider === 'together'
+          ? 'Together partner not configured — set TOGETHER_API_KEY'
+          : 'NIM endpoint not configured — set QWEN_IMAGE_BASE_URL or QWEN_IMAGE_URL',
+        provider,
         model: 'qwen/qwen-image',
+        partner: 'https://together.ai/models/qwen-image',
         docs: 'https://build.nvidia.com/qwen/qwen-image/modelcard',
       };
     }
@@ -115,6 +121,7 @@ async function buildApp() {
       return reply.status(503).send({
         ok: false,
         qwenImage: result.message,
+        provider,
         model: 'qwen/qwen-image',
         endpoint: getQwenImageEndpoint(),
       });
@@ -123,6 +130,7 @@ async function buildApp() {
     return {
       ok: true,
       qwenImage: result.message,
+      provider,
       model: 'qwen/qwen-image',
       endpoint: getQwenImageEndpoint(),
       fallback: true,

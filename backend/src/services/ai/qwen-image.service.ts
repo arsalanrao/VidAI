@@ -1,10 +1,11 @@
 import { env } from '../../config/env.js';
 import { formatNvidiaError } from './flux.service.js';
 
-// Model card: https://build.nvidia.com/qwen/qwen-image/modelcard
-// NIM docs: https://docs.nvidia.com/nim/visual-genai/latest/getting-started.html
-// Qwen-Image uses POST /v1/infer with { prompt, seed } → artifacts[0].base64
-// Same NIM also exposes POST /v1/images/generations (OpenAI-compatible).
+// NVIDIA model card (self-hosted NIM): https://build.nvidia.com/qwen/qwen-image/modelcard
+// Together AI partner (serverless): https://together.ai/models/qwen-image
+
+const DEFAULT_TOGETHER_MODEL = 'Qwen/Qwen-Image';
+const DEFAULT_NIM_OPENAI_MODEL = 'qwen/qwen-image-2512';
 
 type QwenArtifact = {
   base64?: string;
@@ -36,7 +37,15 @@ function trimTrailingSlash(value: string): string {
   return value.replace(/\/+$/, '');
 }
 
-function resolveQwenUrl(): string | null {
+function resolveQwenModel(): string {
+  if (env.qwenImageModel) {
+    return env.qwenImageModel;
+  }
+
+  return env.qwenImageProvider === 'together' ? DEFAULT_TOGETHER_MODEL : DEFAULT_NIM_OPENAI_MODEL;
+}
+
+function resolveNimUrl(): string | null {
   if (env.qwenImageUrl) {
     return env.qwenImageUrl;
   }
@@ -66,6 +75,28 @@ function isLocalNimUrl(url: string): boolean {
   return /localhost|127\.0\.0\.1/.test(url);
 }
 
+function resolveImageDimensions(): { width: number; height: number } {
+  if (env.qwenImageSize) {
+    const [widthRaw, heightRaw] = env.qwenImageSize.split('x');
+    const width = Number(widthRaw);
+    const height = Number(heightRaw);
+
+    if (Number.isFinite(width) && Number.isFinite(height)) {
+      return { width, height };
+    }
+  }
+
+  switch (env.qwenImageAspectRatio) {
+    case '16:9':
+      return { width: 1344, height: 768 };
+    case '1:1':
+      return { width: 1024, height: 1024 };
+    case '9:16':
+    default:
+      return { width: 768, height: 1344 };
+  }
+}
+
 function ensureVerticalPrompt(prompt: string): string {
   const trimmed = prompt.trim();
   const lower = trimmed.toLowerCase();
@@ -77,7 +108,6 @@ function ensureVerticalPrompt(prompt: string): string {
   return `${trimmed}, vertical 9:16 cinematic photorealistic, dramatic lighting, high detail, portrait composition, no text, no watermark`;
 }
 
-/** Model card: seed 0 produces a new image on each call. */
 function resolveSeed(explicit?: number): number {
   if (explicit !== undefined) {
     return explicit;
@@ -96,61 +126,30 @@ export function isQwenImageConfigured(): boolean {
     return false;
   }
 
-  return Boolean(resolveQwenUrl());
-}
-
-function resolveQwenApiKey(): string {
-  return env.nvidiaApiKeyQwen;
-}
-
-function requiresAuth(url: string): boolean {
-  if (isLocalNimUrl(url)) {
-    return false;
+  if (env.qwenImageProvider === 'together') {
+    return Boolean(env.togetherApiKey);
   }
 
-  return Boolean(resolveQwenApiKey());
+  return Boolean(resolveNimUrl());
 }
 
-function buildRequestBody(url: string, payload: QwenPayload): Record<string, unknown> {
-  if (isNimInferUrl(url)) {
-    return {
-      prompt: payload.prompt,
-      seed: payload.seed,
-    };
-  }
+function parseOpenAiImageResponse(data: OpenAiImageResponse): Buffer {
+  const b64 = data.data?.[0]?.b64_json;
 
-  if (isOpenAiImageUrl(url)) {
-    const body: Record<string, unknown> = {
-      model: env.qwenImageModel,
-      prompt: payload.prompt,
-      n: 1,
-      response_format: 'b64_json',
-    };
-
-    if (env.qwenImageSize) {
-      body.size = env.qwenImageSize;
-    }
-
-    return body;
-  }
-
-  return {
-    prompt: payload.prompt,
-    seed: payload.seed,
-  };
-}
-
-function parseImageBuffer(url: string, data: NimInferResponse & OpenAiImageResponse): Buffer {
-  if (isOpenAiImageUrl(url)) {
-    const b64 = data.data?.[0]?.b64_json;
-
-    if (!b64) {
-      throw new Error(`Qwen image returned no image — ${formatNvidiaError(data, 200)}`);
-    }
-
+  if (b64) {
     return Buffer.from(b64, 'base64');
   }
 
+  const url = data.data?.[0]?.url;
+
+  if (!url) {
+    throw new Error(`Qwen image returned no image — ${formatNvidiaError(data, 200)}`);
+  }
+
+  throw new Error('Qwen image returned URL only — set response_format to b64_json');
+}
+
+function parseNimInferResponse(data: NimInferResponse): Buffer {
   const artifact = data.artifacts?.[0];
   const finishReason = artifact?.finishReason ?? 'UNKNOWN';
 
@@ -169,34 +168,29 @@ function parseImageBuffer(url: string, data: NimInferResponse & OpenAiImageRespo
   return Buffer.from(artifact.base64, 'base64');
 }
 
-async function invokeQwen(payload: QwenPayload): Promise<Buffer> {
-  const url = resolveQwenUrl();
-
-  if (!url) {
-    throw new Error(
-      'Qwen NIM endpoint not configured — set QWEN_IMAGE_BASE_URL (e.g. http://localhost:8000) or QWEN_IMAGE_URL (e.g. http://localhost:8000/v1/infer). See https://build.nvidia.com/qwen/qwen-image/modelcard',
-    );
+async function invokeTogether(payload: QwenPayload): Promise<Buffer> {
+  if (!env.togetherApiKey) {
+    throw new Error('TOGETHER_API_KEY not configured — get one at https://together.ai/models/qwen-image');
   }
 
-  const apiKey = resolveQwenApiKey();
+  const { width, height } = resolveImageDimensions();
 
-  if (requiresAuth(url) && !apiKey) {
-    throw new Error('NVIDIA_API_KEY_QWEN required for remote Qwen NIM endpoint');
-  }
-
-  const headers: Record<string, string> = {
-    Accept: 'application/json',
-    'Content-Type': 'application/json',
-  };
-
-  if (apiKey && requiresAuth(url)) {
-    headers.Authorization = `Bearer ${apiKey}`;
-  }
-
-  const response = await fetch(url, {
+  const response = await fetch(env.togetherImageUrl, {
     method: 'POST',
-    headers,
-    body: JSON.stringify(buildRequestBody(url, payload)),
+    headers: {
+      Authorization: `Bearer ${env.togetherApiKey}`,
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      model: resolveQwenModel(),
+      prompt: payload.prompt,
+      width,
+      height,
+      n: 1,
+      response_format: 'b64_json',
+      seed: payload.seed,
+    }),
   });
 
   const rawText = await response.text();
@@ -211,7 +205,95 @@ async function invokeQwen(payload: QwenPayload): Promise<Buffer> {
     }
 
     const detail = formatNvidiaError(errData, response.status);
-    const err = new Error(`Qwen image invocation failed (${response.status}): ${detail}`);
+    const err = new Error(`Together Qwen image failed (${response.status}): ${detail}`);
+    (err as Error & { statusCode?: number }).statusCode = response.status;
+    throw err;
+  }
+
+  let data: OpenAiImageResponse;
+
+  try {
+    data = JSON.parse(rawText) as OpenAiImageResponse;
+  } catch {
+    throw new Error('Together Qwen image returned invalid JSON response');
+  }
+
+  return parseOpenAiImageResponse(data);
+}
+
+function buildNimRequestBody(url: string, payload: QwenPayload): Record<string, unknown> {
+  if (isNimInferUrl(url)) {
+    return {
+      prompt: payload.prompt,
+      seed: payload.seed,
+    };
+  }
+
+  if (isOpenAiImageUrl(url)) {
+    const body: Record<string, unknown> = {
+      model: resolveQwenModel(),
+      prompt: payload.prompt,
+      n: 1,
+      response_format: 'b64_json',
+    };
+
+    if (env.qwenImageSize) {
+      body.size = env.qwenImageSize;
+    }
+
+    return body;
+  }
+
+  return {
+    prompt: payload.prompt,
+    seed: payload.seed,
+  };
+}
+
+async function invokeNim(payload: QwenPayload): Promise<Buffer> {
+  const url = resolveNimUrl();
+
+  if (!url) {
+    throw new Error(
+      'Qwen NIM not configured — set QWEN_IMAGE_BASE_URL or QWEN_IMAGE_URL. See https://build.nvidia.com/qwen/qwen-image/modelcard',
+    );
+  }
+
+  const apiKey = env.nvidiaApiKeyQwen;
+  const needsAuth = !isLocalNimUrl(url);
+
+  if (needsAuth && !apiKey) {
+    throw new Error('NVIDIA_API_KEY_QWEN required for remote Qwen NIM endpoint');
+  }
+
+  const headers: Record<string, string> = {
+    Accept: 'application/json',
+    'Content-Type': 'application/json',
+  };
+
+  if (needsAuth && apiKey) {
+    headers.Authorization = `Bearer ${apiKey}`;
+  }
+
+  const response = await fetch(url, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(buildNimRequestBody(url, payload)),
+  });
+
+  const rawText = await response.text();
+
+  if (response.status !== 200) {
+    let errData: unknown = rawText;
+
+    try {
+      errData = JSON.parse(rawText);
+    } catch {
+      // keep raw text
+    }
+
+    const detail = formatNvidiaError(errData, response.status);
+    const err = new Error(`Qwen NIM invocation failed (${response.status}): ${detail}`);
     (err as Error & { statusCode?: number }).statusCode = response.status;
     throw err;
   }
@@ -221,17 +303,27 @@ async function invokeQwen(payload: QwenPayload): Promise<Buffer> {
   try {
     data = JSON.parse(rawText) as NimInferResponse & OpenAiImageResponse;
   } catch {
-    throw new Error('Qwen image returned invalid JSON response');
+    throw new Error('Qwen NIM returned invalid JSON response');
   }
 
-  return parseImageBuffer(url, data);
+  if (isOpenAiImageUrl(url)) {
+    return parseOpenAiImageResponse(data);
+  }
+
+  return parseNimInferResponse(data);
 }
 
 export async function generateQwenImage(prompt: string, seed?: number): Promise<Buffer> {
-  return invokeQwen({
+  const payload = {
     prompt: ensureVerticalPrompt(prompt),
     seed: resolveSeed(seed),
-  });
+  };
+
+  if (env.qwenImageProvider === 'together') {
+    return invokeTogether(payload);
+  }
+
+  return invokeNim(payload);
 }
 
 export async function checkQwenImageConnection(): Promise<{ ok: boolean; message: string }> {
@@ -239,19 +331,25 @@ export async function checkQwenImageConnection(): Promise<{ ok: boolean; message
     return { ok: false, message: 'Qwen image fallback disabled (QWEN_IMAGE_ENABLED=false)' };
   }
 
-  const url = resolveQwenUrl();
-
-  if (!url) {
+  if (!isQwenImageConfigured()) {
     return {
       ok: false,
       message:
-        'Qwen NIM not configured — set QWEN_IMAGE_BASE_URL=http://HOST:8000 or QWEN_IMAGE_URL=http://HOST:8000/v1/infer',
+        env.qwenImageProvider === 'together'
+          ? 'Together partner not configured — set TOGETHER_API_KEY from https://together.ai/models/qwen-image'
+          : 'Qwen NIM not configured — set QWEN_IMAGE_BASE_URL or QWEN_IMAGE_URL',
     };
   }
 
   try {
     await generateQwenImage('a simple blue circle on white background, no text, family-friendly', 0);
-    return { ok: true, message: `Qwen NIM working (${url})` };
+    return {
+      ok: true,
+      message:
+        env.qwenImageProvider === 'together'
+          ? `Together Qwen partner working (${resolveQwenModel()})`
+          : `Qwen NIM working (${resolveNimUrl()})`,
+    };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     return { ok: false, message };
@@ -259,5 +357,13 @@ export async function checkQwenImageConnection(): Promise<{ ok: boolean; message
 }
 
 export function getQwenImageEndpoint(): string | null {
-  return resolveQwenUrl();
+  if (env.qwenImageProvider === 'together') {
+    return env.togetherImageUrl;
+  }
+
+  return resolveNimUrl();
+}
+
+export function getQwenImageProvider(): string {
+  return env.qwenImageProvider;
 }
