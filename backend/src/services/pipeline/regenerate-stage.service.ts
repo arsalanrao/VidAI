@@ -1,5 +1,5 @@
 import { prisma } from '../../db/client.js';
-import { generateFluxImageWithRetry } from '../ai/flux.service.js';
+import { generateImageWithRetry } from '../ai/image-generation.service.js';
 import { projectKey, uploadObject } from '../storage/r2.service.js';
 import { r2Configured } from '../../config/env.js';
 import type { ProjectScript } from '../../types/script.types.js';
@@ -24,7 +24,7 @@ export async function regenerateThumbnail(projectId: string): Promise<{ thumbnai
   }
 
   const script = parseProjectScript(project.script);
-  const thumbnailBuffer = await generateFluxImageWithRetry(script.thumbnailPrompt);
+  const thumbnailBuffer = await generateImageWithRetry(script.thumbnailPrompt);
   const thumbnailKey = projectKey(projectId, 'thumbnail.jpg');
 
   await uploadObject({
@@ -80,7 +80,7 @@ export async function regenerateScene(
   const imageKeys: string[] = [];
 
   for (let variant = 0; variant < 3; variant += 1) {
-    const imageBuffer = await generateFluxImageWithRetry(prompts[variant] ?? scene.prompt, {
+    const imageBuffer = await generateImageWithRetry(prompts[variant] ?? scene.prompt, {
       startAttempt,
       maxAttempts: 7,
     });

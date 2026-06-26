@@ -1,5 +1,10 @@
 import { prisma } from '../../db/client.js';
-import { generateFluxImageWithRetry, FLUX_MAX_ATTEMPTS, FluxContentFilteredError, FluxSceneFilteredError } from '../ai/flux.service.js';
+import {
+  generateImageWithRetry,
+  FLUX_MAX_ATTEMPTS,
+  FluxContentFilteredError,
+  FluxSceneFilteredError,
+} from '../ai/image-generation.service.js';
 import {
   getSignedObjectUrl,
   projectKey,
@@ -32,7 +37,7 @@ async function generateFluxForPrompt(
   scene?: { id: string; order: number },
 ): Promise<Buffer> {
   try {
-    return await generateFluxImageWithRetry(prompt, {
+    return await generateImageWithRetry(prompt, {
       startAttempt: fluxStartAttempt,
       maxAttempts: FLUX_MAX_ATTEMPTS + fluxStartAttempt,
     });

@@ -9,6 +9,7 @@ import { checkR2Connection } from './services/storage/r2.service.js';
 import { isYtDlpAvailable, getYtDlpVersion, ensureYtDlpPath } from './services/youtube/ytdlp.service.js';
 import { checkKimiConnection } from './services/ai/kimi.service.js';
 import { checkFluxConnection } from './services/ai/flux.service.js';
+import { checkQwenImageConnection, isQwenImageConfigured } from './services/ai/qwen-image.service.js';
 import { checkTtsConnection, listChatterboxVoices, listMagpieGrpcVoices, listMagpieVoices } from './services/ai/tts.service.js';
 import { checkFfmpegAvailable, getRenderSettings } from './services/video/ffmpeg.util.js';
 import { registerWebhookRoutes } from './api/routes/webhook.routes.js';
@@ -96,6 +97,20 @@ async function buildApp() {
     }
 
     return { ok: true, flux: result.message, model: 'flux.2-klein-4b' };
+  });
+
+  app.get('/health/qwen-image', async (_req, reply) => {
+    if (!isQwenImageConfigured()) {
+      return { ok: false, qwenImage: 'disabled or not configured', model: 'qwen/qwen-image' };
+    }
+
+    const result = await checkQwenImageConnection();
+
+    if (!result.ok) {
+      return reply.status(503).send({ ok: false, qwenImage: result.message, model: 'qwen/qwen-image' });
+    }
+
+    return { ok: true, qwenImage: result.message, model: 'qwen/qwen-image', fallback: true };
   });
 
   app.get('/health/tts', async (_req, reply) => {
