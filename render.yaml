@@ -36,9 +36,9 @@ services:
       - key: OPENAI_API_KEY
         sync: false
       - key: TTS_PROVIDER
-        value: magpie
+        value: chatterbox
       - key: TTS_VOICE
-        value: Magpie-Multilingual.EN-US.Aria
+        value: Magpie-Multilingual.EN-US.Mia
       - key: TTS_LANGUAGE
         value: en-US
       - key: MAGPIE_FUNCTION_ID
@@ -46,7 +46,7 @@ services:
       - key: MAGPIE_API_KEY
         sync: false
       - key: TTS_FALLBACK
-        value: magpie-grpc
+        value: magpie
       - key: TTS_SAMPLE_RATE_HZ
         value: "22050"
       - key: CHATTERBOX_FUNCTION_ID

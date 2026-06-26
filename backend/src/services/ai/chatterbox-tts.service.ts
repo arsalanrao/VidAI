@@ -12,7 +12,7 @@ function getMagpieApiKey(): string {
 }
 
 function getChatterboxApiKey(): string {
-  return env.chatterboxApiKey || env.openaiApiKey;
+  return env.chatterboxApiKey || env.openaiApiKey || env.nvidiaApiKey || env.magpieApiKey;
 }
 
 function formatRivaError(label: string, err: unknown): Error {
@@ -55,6 +55,48 @@ function getChatterboxGrpcOptions() {
     apiKey: getChatterboxApiKey(),
     sampleRateHz: env.ttsSampleRateHz,
   };
+}
+
+function getChatterboxBaseUrl(): string {
+  return `https://${getChatterboxFunctionId()}.invocation.api.nvcf.nvidia.com`;
+}
+
+export async function chatterboxHttpTts(text: string, voiceName?: string): Promise<Buffer> {
+  const apiKey = getChatterboxApiKey();
+
+  if (!apiKey) {
+    throw new Error('OPENAI_API_KEY or CHATTERBOX_API_KEY required for Chatterbox HTTP TTS');
+  }
+
+  const input = text.trim().slice(0, 4000);
+
+  if (input.length < 3) {
+    throw new Error('Narration text is too short for TTS');
+  }
+
+  const form = new FormData();
+  form.append('language', env.ttsLanguage);
+  form.append('text', input);
+  form.append('voice', voiceName ?? env.chatterboxVoice);
+
+  const response = await fetch(`${getChatterboxBaseUrl()}/v1/audio/synthesize`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      Accept: 'audio/wav',
+    },
+    body: form,
+  });
+
+  if (!response.ok) {
+    const errText = await response.text();
+    if (response.status === 404 || errText.includes('Not found')) {
+      throw formatRivaError('Chatterbox HTTP TTS', new Error('NOT_FOUND'));
+    }
+    throw new Error(`Chatterbox HTTP TTS failed (${response.status}): ${errText.slice(0, 400)}`);
+  }
+
+  return Buffer.from(await response.arrayBuffer());
 }
 
 export async function magpieGrpcTts(text: string, voiceName?: string): Promise<Buffer> {

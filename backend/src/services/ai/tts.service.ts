@@ -1,5 +1,7 @@
 import { env } from '../../config/env.js';
+import type { TtsVoiceConfig } from '../../types/project-preferences.types.js';
 import {
+  chatterboxHttpTts,
   chatterboxTts,
   checkChatterboxConnection,
   checkMagpieGrpcConnection,
@@ -12,28 +14,7 @@ import {
 const OPENAI_TTS_URL = 'https://api.openai.com/v1/audio/speech';
 const DEFAULT_MAGPIE_FUNCTION_ID = '877104f7-e885-42b9-8de8-f6e4c6303969';
 
-export type TtsProvider = 'magpie' | 'chatterbox' | 'openai';
-export type TtsFallback = 'magpie-grpc' | 'chatterbox' | 'openai' | 'none';
-
-function getProvider(): TtsProvider {
-  const value = env.ttsProvider.toLowerCase();
-
-  if (value === 'magpie' || value === 'chatterbox' || value === 'openai') {
-    return value;
-  }
-
-  throw new Error(`Unsupported TTS_PROVIDER "${env.ttsProvider}". Use "magpie", "chatterbox", or "openai".`);
-}
-
-function getFallback(): TtsFallback {
-  const value = env.ttsFallback.toLowerCase();
-
-  if (value === 'magpie-grpc' || value === 'chatterbox' || value === 'openai' || value === 'none') {
-    return value;
-  }
-
-  return 'magpie-grpc';
-}
+export type TtsProvider = 'chatterbox' | 'magpie' | 'openai';
 
 function getMagpieApiKey(): string {
   return env.magpieApiKey || env.nvidiaApiKey;
@@ -54,7 +35,7 @@ function normalizeInput(text: string): string {
   return input;
 }
 
-async function magpieTts(text: string, voice?: string): Promise<Buffer> {
+async function magpieTts(text: string, voice: string): Promise<Buffer> {
   const apiKey = getMagpieApiKey();
 
   if (!apiKey) {
@@ -65,7 +46,7 @@ async function magpieTts(text: string, voice?: string): Promise<Buffer> {
   const form = new FormData();
   form.append('language', env.ttsLanguage);
   form.append('text', input);
-  form.append('voice', voice ?? env.ttsVoice);
+  form.append('voice', voice);
 
   const response = await fetch(`${getMagpieBaseUrl()}/v1/audio/synthesize`, {
     method: 'POST',
@@ -113,34 +94,55 @@ async function openaiTts(text: string, voice?: string): Promise<Buffer> {
   return Buffer.from(await response.arrayBuffer());
 }
 
-async function synthesizeWithFallback(
-  text: string,
-  primary: TtsProvider,
-  voiceConfig?: { voice: string; openaiVoice?: string },
-): Promise<Buffer> {
-  const fallback = getFallback();
-  const magpieVoice = voiceConfig?.voice ?? env.ttsVoice;
-  const openaiVoice = voiceConfig?.openaiVoice ?? env.ttsVoice;
+function resolveVoices(voiceConfig?: TtsVoiceConfig): TtsVoiceConfig {
+  return {
+    chatterboxVoice: voiceConfig?.chatterboxVoice ?? env.chatterboxVoice,
+    magpieVoice: voiceConfig?.magpieVoice ?? env.ttsVoice,
+    openaiVoice: voiceConfig?.openaiVoice,
+  };
+}
+
+/**
+ * Chatterbox (best quality) → Magpie HTTP → Magpie gRPC → optional OpenAI.
+ * Each provider uses its own voice name from the preset mapping.
+ */
+async function synthesizeWithFallback(text: string, voiceConfig?: TtsVoiceConfig): Promise<Buffer> {
+  const voices = resolveVoices(voiceConfig);
   const attempts: Array<{ provider: string; run: () => Promise<Buffer> }> = [];
 
-  if (primary === 'magpie') {
-    attempts.push({ provider: 'magpie', run: () => magpieTts(text, magpieVoice) });
-  } else if (primary === 'chatterbox') {
-    attempts.push({ provider: 'chatterbox', run: () => chatterboxTts(text, magpieVoice) });
-  } else {
-    attempts.push({ provider: 'openai', run: () => openaiTts(text, openaiVoice) });
+  if (isChatterboxEnabled()) {
+    attempts.push({
+      provider: 'chatterbox',
+      run: () => chatterboxTts(text, voices.chatterboxVoice),
+    });
+    attempts.push({
+      provider: 'chatterbox-http',
+      run: () => chatterboxHttpTts(text, voices.chatterboxVoice),
+    });
   }
 
-  if (fallback === 'magpie-grpc') {
-    attempts.push({ provider: 'magpie-grpc', run: () => magpieGrpcTts(text, magpieVoice) });
+  if (getMagpieApiKey()) {
+    attempts.push({
+      provider: 'magpie',
+      run: () => magpieTts(text, voices.magpieVoice),
+    });
+    attempts.push({
+      provider: 'magpie-grpc',
+      run: () => magpieGrpcTts(text, voices.magpieVoice),
+    });
   }
 
-  if (primary !== 'chatterbox' && fallback === 'chatterbox' && isChatterboxEnabled()) {
-    attempts.push({ provider: 'chatterbox', run: () => chatterboxTts(text, magpieVoice) });
+  if (env.openaiApiKey && env.ttsFallback === 'openai') {
+    attempts.push({
+      provider: 'openai',
+      run: () => openaiTts(text, voices.openaiVoice),
+    });
   }
 
-  if (primary !== 'openai' && fallback === 'openai') {
-    attempts.push({ provider: 'openai', run: () => openaiTts(text, openaiVoice) });
+  if (attempts.length === 0) {
+    throw new Error(
+      'No TTS provider configured. Set OPENAI_API_KEY (Chatterbox) and/or MAGPIE_API_KEY / NVIDIA_API_KEY (Magpie).',
+    );
   }
 
   const errors: string[] = [];
@@ -188,10 +190,9 @@ export { listChatterboxVoices, listMagpieGrpcVoices };
 
 export async function generateNarrationAudio(
   text: string,
-  voiceConfig?: { voice: string; openaiVoice?: string },
+  voiceConfig?: TtsVoiceConfig,
 ): Promise<Buffer> {
-  const provider = getProvider();
-  return synthesizeWithFallback(text, provider, voiceConfig);
+  return synthesizeWithFallback(text, voiceConfig);
 }
 
 export async function checkTtsConnection(): Promise<{
@@ -201,53 +202,67 @@ export async function checkTtsConnection(): Promise<{
   fallback?: string;
   chatterboxEnabled?: boolean;
 }> {
-  try {
-    const provider = getProvider();
-    const fallback = getFallback();
+  const chatterboxEnabled = isChatterboxEnabled();
+  const magpieKey = getMagpieApiKey();
+  const provider = env.ttsProvider;
 
-    if (provider === 'magpie') {
-      if (!getMagpieApiKey()) {
-        return { ok: false, message: 'MAGPIE_API_KEY or NVIDIA_API_KEY not set', provider, fallback };
-      }
+  if (!chatterboxEnabled && !magpieKey) {
+    return {
+      ok: false,
+      message: 'No TTS keys configured. Set OPENAI_API_KEY (Chatterbox) and/or NVIDIA_API_KEY (Magpie).',
+      provider,
+    };
+  }
 
+  const errors: string[] = [];
+
+  if (chatterboxEnabled) {
+    const chatterbox = await checkChatterboxConnection();
+    if (chatterbox.ok) {
+      return {
+        ok: true,
+        message: 'Chatterbox multilingual TTS connected (primary)',
+        provider: 'chatterbox',
+        fallback: magpieKey ? 'magpie' : undefined,
+        chatterboxEnabled: true,
+      };
+    }
+    errors.push(chatterbox.message);
+  }
+
+  if (magpieKey) {
+    try {
       await listMagpieVoices();
       return {
         ok: true,
-        message: 'Magpie multilingual TTS connected',
-        provider,
-        fallback: fallback === 'none' ? undefined : fallback,
-        chatterboxEnabled: isChatterboxEnabled(),
+        message: chatterboxEnabled
+          ? `Chatterbox unavailable (${errors[0] ?? 'check failed'}); Magpie HTTP ready as fallback`
+          : 'Magpie multilingual TTS connected',
+        provider: chatterboxEnabled ? 'chatterbox' : 'magpie',
+        fallback: 'magpie-grpc',
+        chatterboxEnabled,
+      };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      errors.push(`magpie: ${message}`);
+    }
+
+    const magpieGrpc = await checkMagpieGrpcConnection();
+    if (magpieGrpc.ok) {
+      return {
+        ok: true,
+        message: `Magpie HTTP unavailable; Magpie gRPC ready (${magpieGrpc.message})`,
+        provider: 'magpie-grpc',
+        chatterboxEnabled,
       };
     }
-
-    if (provider === 'chatterbox') {
-      const result = await checkChatterboxConnection();
-      return { ok: result.ok, message: result.message, provider, fallback, chatterboxEnabled: isChatterboxEnabled() };
-    }
-
-    if (!env.openaiApiKey) {
-      return { ok: false, message: 'OPENAI_API_KEY not set on server', provider, fallback };
-    }
-
-    return { ok: true, message: 'OpenAI TTS configured', provider, fallback };
-  } catch (err) {
-    const provider = getProvider();
-    const fallback = getFallback();
-
-    if (provider === 'magpie' && fallback === 'magpie-grpc') {
-      const magpieGrpc = await checkMagpieGrpcConnection();
-      if (magpieGrpc.ok) {
-        return {
-          ok: true,
-          message: `Magpie HTTP unavailable; Magpie gRPC fallback ready (${magpieGrpc.message})`,
-          provider,
-          fallback,
-          chatterboxEnabled: isChatterboxEnabled(),
-        };
-      }
-    }
-
-    const message = err instanceof Error ? err.message : 'TTS check failed';
-    return { ok: false, message, provider: env.ttsProvider, fallback };
+    errors.push(magpieGrpc.message);
   }
+
+  return {
+    ok: false,
+    message: errors.join(' | ') || 'TTS check failed',
+    provider,
+    chatterboxEnabled,
+  };
 }

@@ -123,14 +123,45 @@ export function visualThemeToMotionPreset(theme: VisualTheme): string {
   return map[theme];
 }
 
-export function voicePresetToTtsVoice(preset: VoicePreset): { voice: string; openaiVoice?: string } {
-  const map: Record<VoicePreset, { voice: string; openaiVoice?: string }> = {
-    male_deep: { voice: 'Chatterbox-Multilingual.en-US.Male', openaiVoice: 'onyx' },
-    female_calm: { voice: 'Magpie-Multilingual.EN-US.Aria', openaiVoice: 'nova' },
-    narrator: { voice: 'Magpie-Multilingual.EN-US.Emma', openaiVoice: 'alloy' },
-    old_man: { voice: 'Chatterbox-Multilingual.en-US.Male', openaiVoice: 'fable' },
-    robotic: { voice: 'Magpie-Multilingual.EN-US.Aria', openaiVoice: 'echo' },
-    story_teller: { voice: 'Magpie-Multilingual.EN-US.Emma', openaiVoice: 'shimmer' },
+export type TtsVoiceConfig = {
+  chatterboxVoice: string;
+  magpieVoice: string;
+  openaiVoice?: string;
+};
+
+/** Per-preset voices for each TTS backend (names differ between Chatterbox and Magpie). */
+export function voicePresetToTtsVoice(preset: VoicePreset): TtsVoiceConfig {
+  const map: Record<VoicePreset, TtsVoiceConfig> = {
+    male_deep: {
+      chatterboxVoice: 'Chatterbox-Multilingual.en-US.Male',
+      magpieVoice: 'Magpie-Multilingual.EN-US.Leo',
+      openaiVoice: 'onyx',
+    },
+    female_calm: {
+      chatterboxVoice: 'Chatterbox-Multilingual.en-US.Female',
+      magpieVoice: 'Magpie-Multilingual.EN-US.Aria',
+      openaiVoice: 'nova',
+    },
+    narrator: {
+      chatterboxVoice: 'Chatterbox-Multilingual.en-US.Male',
+      magpieVoice: 'Magpie-Multilingual.EN-US.Mia',
+      openaiVoice: 'alloy',
+    },
+    old_man: {
+      chatterboxVoice: 'Chatterbox-Multilingual.en-US.Male',
+      magpieVoice: 'Magpie-Multilingual.EN-US.Leo',
+      openaiVoice: 'fable',
+    },
+    robotic: {
+      chatterboxVoice: 'Chatterbox-Multilingual.en-US.Male',
+      magpieVoice: 'Magpie-Multilingual.EN-US.Jason',
+      openaiVoice: 'echo',
+    },
+    story_teller: {
+      chatterboxVoice: 'Chatterbox-Multilingual.en-US.Female',
+      magpieVoice: 'Magpie-Multilingual.EN-US.Mia',
+      openaiVoice: 'shimmer',
+    },
   };
 
   return map[preset];
