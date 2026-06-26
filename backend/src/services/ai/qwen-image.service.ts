@@ -177,7 +177,13 @@ function parseNimInferResponse(data: NimInferResponse): Buffer {
 async function invokeTogether(payload: QwenPayload): Promise<Buffer> {
   if (!env.togetherApiKey) {
     throw new Error(
-      'TOGETHER_API_KEY not configured — get one at https://api.together.ai/models/Qwen/Qwen-Image',
+      'TOGETHER_API_KEY not configured — get one at https://api.together.ai/settings/api-keys',
+    );
+  }
+
+  if (env.togetherApiKey.startsWith('nvapi-')) {
+    throw new Error(
+      'TOGETHER_API_KEY looks like an NVIDIA key (nvapi-…). Create a separate Together API key at https://api.together.ai/settings/api-keys',
     );
   }
 
