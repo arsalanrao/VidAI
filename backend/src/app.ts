@@ -9,7 +9,7 @@ import { checkR2Connection } from './services/storage/r2.service.js';
 import { isYtDlpAvailable, getYtDlpVersion, ensureYtDlpPath } from './services/youtube/ytdlp.service.js';
 import { checkKimiConnection } from './services/ai/kimi.service.js';
 import { checkFluxConnection } from './services/ai/flux.service.js';
-import { checkQwenImageConnection, isQwenImageConfigured } from './services/ai/qwen-image.service.js';
+import { checkQwenImageConnection, getQwenImageEndpoint, isQwenImageConfigured } from './services/ai/qwen-image.service.js';
 import { checkTtsConnection, listChatterboxVoices, listMagpieGrpcVoices, listMagpieVoices } from './services/ai/tts.service.js';
 import { checkFfmpegAvailable, getRenderSettings } from './services/video/ffmpeg.util.js';
 import { registerWebhookRoutes } from './api/routes/webhook.routes.js';
@@ -101,16 +101,32 @@ async function buildApp() {
 
   app.get('/health/qwen-image', async (_req, reply) => {
     if (!isQwenImageConfigured()) {
-      return { ok: false, qwenImage: 'disabled or not configured', model: 'qwen/qwen-image' };
+      return {
+        ok: false,
+        qwenImage: 'NIM endpoint not configured — set QWEN_IMAGE_BASE_URL or QWEN_IMAGE_URL',
+        model: 'qwen/qwen-image',
+        docs: 'https://build.nvidia.com/qwen/qwen-image/modelcard',
+      };
     }
 
     const result = await checkQwenImageConnection();
 
     if (!result.ok) {
-      return reply.status(503).send({ ok: false, qwenImage: result.message, model: 'qwen/qwen-image' });
+      return reply.status(503).send({
+        ok: false,
+        qwenImage: result.message,
+        model: 'qwen/qwen-image',
+        endpoint: getQwenImageEndpoint(),
+      });
     }
 
-    return { ok: true, qwenImage: result.message, model: 'qwen/qwen-image', fallback: true };
+    return {
+      ok: true,
+      qwenImage: result.message,
+      model: 'qwen/qwen-image',
+      endpoint: getQwenImageEndpoint(),
+      fallback: true,
+    };
   });
 
   app.get('/health/tts', async (_req, reply) => {
