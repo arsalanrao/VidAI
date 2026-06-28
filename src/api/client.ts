@@ -184,10 +184,11 @@ export async function retryImages(
 export async function retryAudio(
   projectId: string,
   voicePreset?: string,
+  voiceEmotion?: string,
 ): Promise<ActionResponse> {
   return request<ActionResponse>(`/api/project/${projectId}/retry-audio`, {
     method: 'POST',
-    body: JSON.stringify({ voicePreset }),
+    body: JSON.stringify({ voicePreset, voiceEmotion }),
   });
 }
 

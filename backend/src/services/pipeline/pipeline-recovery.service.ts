@@ -181,7 +181,7 @@ export function inferFailedStage(project: {
   }
 
   if (!completeness.thumbnail || completeness.scenesDone < completeness.scenesTotal) {
-    return 'images';
+    return completeness.narration ? 'images' : 'audio';
   }
 
   if (!completeness.narration) {

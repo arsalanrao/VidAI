@@ -5,8 +5,9 @@ import { r2Configured } from '../../config/env.js';
 import type { ProjectScript } from '../../types/script.types.js';
 import {
   parseProjectPreferences,
+  preferencesToTtsVoice,
   readProjectPreferences,
-  voicePresetToTtsVoice,
+  type VoiceEmotion,
   type VoicePreset,
 } from '../../types/project-preferences.types.js';
 
@@ -20,7 +21,11 @@ function parseProjectScript(script: unknown): ProjectScript {
 
 export async function runTtsStage(
   projectId: string,
-  options?: { voicePreset?: VoicePreset; recoveryAttempt?: number },
+  options?: {
+    voicePreset?: VoicePreset;
+    voiceEmotion?: VoiceEmotion;
+    recoveryAttempt?: number;
+  },
 ): Promise<{ narrationKey: string }> {
   if (!r2Configured) {
     throw new Error('R2 not configured — add R2 env vars to store narration audio');
@@ -35,13 +40,21 @@ export async function runTtsStage(
   const script = parseProjectScript(project.script);
   const preferences = readProjectPreferences(project);
   const voicePreset = options?.voicePreset ?? preferences.voicePreset;
-  const voiceConfig = voicePresetToTtsVoice(voicePreset);
+  const voiceEmotion = options?.voiceEmotion ?? preferences.voiceEmotion;
+  const voiceConfig = preferencesToTtsVoice({ voicePreset, voiceEmotion });
 
-  if (options?.voicePreset && options.voicePreset !== preferences.voicePreset) {
+  const prefsChanged =
+    voicePreset !== preferences.voicePreset || voiceEmotion !== preferences.voiceEmotion;
+
+  if (prefsChanged) {
     await prisma.project.update({
       where: { id: projectId },
       data: {
-        preferences: parseProjectPreferences({ ...preferences, voicePreset: options.voicePreset }),
+        preferences: parseProjectPreferences({
+          ...preferences,
+          voicePreset,
+          voiceEmotion,
+        }),
       },
     });
   }

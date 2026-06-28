@@ -14,13 +14,11 @@ export type MotionStyle =
   | 'handheld'
   | 'movie_camera';
 
-export type VoicePreset =
-  | 'male_deep'
-  | 'female_calm'
-  | 'narrator'
-  | 'old_man'
-  | 'robotic'
-  | 'story_teller';
+/** Magpie TTS characters (English US) — matches NVIDIA Build UI */
+export type VoicePreset = 'mia' | 'aria' | 'jason' | 'leo' | 'ray';
+
+/** Magpie TTS emotions — matches NVIDIA Build UI */
+export type VoiceEmotion = 'default' | 'neutral' | 'calm' | 'happy' | 'angry';
 
 export type CaptionStyle =
   | 'mrbeast'
@@ -35,6 +33,7 @@ export type ProjectPreferences = {
   visualTheme: VisualTheme;
   motionStyle: MotionStyle;
   voicePreset: VoicePreset;
+  voiceEmotion: VoiceEmotion;
   captionStyle: CaptionStyle;
 };
 
@@ -62,12 +61,19 @@ export const MOTION_STYLES: OptionItem<MotionStyle>[] = [
 ];
 
 export const VOICE_PRESETS: OptionItem<VoicePreset>[] = [
-  { id: 'male_deep', label: 'Male Deep' },
-  { id: 'female_calm', label: 'Female Calm' },
-  { id: 'narrator', label: 'Narrator' },
-  { id: 'old_man', label: 'Old Man' },
-  { id: 'robotic', label: 'Robotic' },
-  { id: 'story_teller', label: 'Story Teller' },
+  { id: 'mia', label: 'Mia' },
+  { id: 'aria', label: 'Aria' },
+  { id: 'jason', label: 'Jason' },
+  { id: 'leo', label: 'Leo' },
+  { id: 'ray', label: 'Ray' },
+];
+
+export const VOICE_EMOTIONS: OptionItem<VoiceEmotion>[] = [
+  { id: 'default', label: 'Default' },
+  { id: 'neutral', label: 'Neutral' },
+  { id: 'calm', label: 'Calm' },
+  { id: 'happy', label: 'Happy' },
+  { id: 'angry', label: 'Angry' },
 ];
 
 export const CAPTION_STYLES: OptionItem<CaptionStyle>[] = [
@@ -83,6 +89,7 @@ export const CAPTION_STYLES: OptionItem<CaptionStyle>[] = [
 export const DEFAULT_PREFERENCES: ProjectPreferences = {
   visualTheme: 'cinematic',
   motionStyle: 'movie_camera',
-  voicePreset: 'narrator',
+  voicePreset: 'mia',
+  voiceEmotion: 'default',
   captionStyle: 'mrbeast',
 };

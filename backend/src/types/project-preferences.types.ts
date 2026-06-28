@@ -1,4 +1,11 @@
 import { z } from 'zod';
+import {
+  buildMagpieVoiceId,
+  MAGPIE_CHARACTERS,
+  MAGPIE_EMOTIONS,
+  type MagpieCharacter,
+  type MagpieEmotion,
+} from '../services/ai/magpie-voices.js';
 
 export const VISUAL_THEMES = [
   'cinematic',
@@ -18,7 +25,8 @@ export const MOTION_STYLES = [
   'movie_camera',
 ] as const;
 
-export const VOICE_PRESETS = [
+/** @deprecated Legacy abstract presets — migrated to Magpie characters on read. */
+export const LEGACY_VOICE_PRESETS = [
   'male_deep',
   'female_calm',
   'narrator',
@@ -26,6 +34,8 @@ export const VOICE_PRESETS = [
   'robotic',
   'story_teller',
 ] as const;
+
+export const VOICE_PRESETS = MAGPIE_CHARACTERS;
 
 export const CAPTION_STYLES = [
   'mrbeast',
@@ -39,27 +49,84 @@ export const CAPTION_STYLES = [
 
 export type VisualTheme = (typeof VISUAL_THEMES)[number];
 export type MotionStyle = (typeof MOTION_STYLES)[number];
-export type VoicePreset = (typeof VOICE_PRESETS)[number];
+export type VoicePreset = MagpieCharacter;
+export type VoiceEmotion = MagpieEmotion;
 export type CaptionStyle = (typeof CAPTION_STYLES)[number];
 
 export type ProjectPreferences = {
   visualTheme: VisualTheme;
   motionStyle: MotionStyle;
   voicePreset: VoicePreset;
+  voiceEmotion: VoiceEmotion;
   captionStyle: CaptionStyle;
 };
 
-export const projectPreferencesSchema = z.object({
-  visualTheme: z.enum(VISUAL_THEMES).default('cinematic'),
-  motionStyle: z.enum(MOTION_STYLES).default('movie_camera'),
-  voicePreset: z.enum(VOICE_PRESETS).default('narrator'),
-  captionStyle: z.enum(CAPTION_STYLES).default('mrbeast'),
-});
+const LEGACY_VOICE_MAP: Record<
+  (typeof LEGACY_VOICE_PRESETS)[number],
+  { character: MagpieCharacter; emotion: MagpieEmotion }
+> = {
+  male_deep: { character: 'leo', emotion: 'default' },
+  female_calm: { character: 'aria', emotion: 'calm' },
+  narrator: { character: 'mia', emotion: 'default' },
+  old_man: { character: 'leo', emotion: 'default' },
+  robotic: { character: 'jason', emotion: 'neutral' },
+  story_teller: { character: 'mia', emotion: 'calm' },
+};
+
+function migrateVoicePreset(raw: unknown): MagpieCharacter {
+  if (typeof raw !== 'string') {
+    return 'mia';
+  }
+
+  if (MAGPIE_CHARACTERS.includes(raw as MagpieCharacter)) {
+    return raw as MagpieCharacter;
+  }
+
+  const legacy = LEGACY_VOICE_MAP[raw as (typeof LEGACY_VOICE_PRESETS)[number]];
+  return legacy?.character ?? 'mia';
+}
+
+function migrateVoiceEmotion(raw: unknown, voicePreset: unknown): MagpieEmotion {
+  if (typeof raw === 'string' && MAGPIE_EMOTIONS.includes(raw as MagpieEmotion)) {
+    return raw as MagpieEmotion;
+  }
+
+  if (typeof voicePreset === 'string') {
+    const legacy = LEGACY_VOICE_MAP[voicePreset as (typeof LEGACY_VOICE_PRESETS)[number]];
+    if (legacy) {
+      return legacy.emotion;
+    }
+  }
+
+  return 'default';
+}
+
+export const projectPreferencesSchema = z
+  .object({
+    visualTheme: z.enum(VISUAL_THEMES).default('cinematic'),
+    motionStyle: z.enum(MOTION_STYLES).default('movie_camera'),
+    voicePreset: z.string().default('mia'),
+    voiceEmotion: z.string().optional(),
+    captionStyle: z.enum(CAPTION_STYLES).default('mrbeast'),
+  })
+  .transform((raw) => {
+    const voicePreset = migrateVoicePreset(raw.voicePreset);
+    const voiceEmotion = migrateVoiceEmotion(raw.voiceEmotion, raw.voicePreset);
+
+    return {
+      visualTheme: raw.visualTheme,
+      motionStyle: raw.motionStyle,
+      voicePreset,
+      voiceEmotion,
+      captionStyle: raw.captionStyle,
+    } satisfies ProjectPreferences;
+  });
 
 export const DEFAULT_PREFERENCES: ProjectPreferences = {
   visualTheme: 'cinematic',
   motionStyle: 'movie_camera',
-  voicePreset: 'narrator',
+  voicePreset: 'mia',
+  voiceEmotion: 'default',
   captionStyle: 'mrbeast',
 };
 
@@ -124,45 +191,35 @@ export function visualThemeToMotionPreset(theme: VisualTheme): string {
 }
 
 export type TtsVoiceConfig = {
-  chatterboxVoice: string;
+  magpieCharacter: MagpieCharacter;
+  magpieEmotion: MagpieEmotion;
   magpieVoice: string;
+  chatterboxVoice: string;
   openaiVoice?: string;
 };
 
-/** Per-preset voices for each TTS backend (names differ between Chatterbox and Magpie). */
-export function voicePresetToTtsVoice(preset: VoicePreset): TtsVoiceConfig {
-  const map: Record<VoicePreset, TtsVoiceConfig> = {
-    male_deep: {
-      chatterboxVoice: 'Chatterbox-Multilingual.en-US.Male',
-      magpieVoice: 'Magpie-Multilingual.EN-US.Leo',
-      openaiVoice: 'onyx',
-    },
-    female_calm: {
-      chatterboxVoice: 'Chatterbox-Multilingual.en-US.Female',
-      magpieVoice: 'Magpie-Multilingual.EN-US.Aria',
-      openaiVoice: 'nova',
-    },
-    narrator: {
-      chatterboxVoice: 'Chatterbox-Multilingual.en-US.Male',
-      magpieVoice: 'Magpie-Multilingual.EN-US.Mia',
-      openaiVoice: 'alloy',
-    },
-    old_man: {
-      chatterboxVoice: 'Chatterbox-Multilingual.en-US.Male',
-      magpieVoice: 'Magpie-Multilingual.EN-US.Leo',
-      openaiVoice: 'fable',
-    },
-    robotic: {
-      chatterboxVoice: 'Chatterbox-Multilingual.en-US.Male',
-      magpieVoice: 'Magpie-Multilingual.EN-US.Jason',
-      openaiVoice: 'echo',
-    },
-    story_teller: {
-      chatterboxVoice: 'Chatterbox-Multilingual.en-US.Female',
-      magpieVoice: 'Magpie-Multilingual.EN-US.Mia',
-      openaiVoice: 'shimmer',
-    },
-  };
+const CHATTERBOX_BY_CHARACTER: Record<MagpieCharacter, string> = {
+  mia: 'Chatterbox-Multilingual.en-US.Female',
+  aria: 'Chatterbox-Multilingual.en-US.Female',
+  jason: 'Chatterbox-Multilingual.en-US.Male',
+  leo: 'Chatterbox-Multilingual.en-US.Male',
+  ray: 'Chatterbox-Multilingual.en-US.Male',
+};
 
-  return map[preset];
+export function preferencesToTtsVoice(preferences: Pick<ProjectPreferences, 'voicePreset' | 'voiceEmotion'>): TtsVoiceConfig {
+  const character = preferences.voicePreset;
+  const emotion = preferences.voiceEmotion;
+
+  return {
+    magpieCharacter: character,
+    magpieEmotion: emotion,
+    magpieVoice: buildMagpieVoiceId(character, emotion),
+    chatterboxVoice: CHATTERBOX_BY_CHARACTER[character],
+    openaiVoice: 'alloy',
+  };
+}
+
+/** @deprecated Use preferencesToTtsVoice */
+export function voicePresetToTtsVoice(preset: VoicePreset, emotion: VoiceEmotion = 'default'): TtsVoiceConfig {
+  return preferencesToTtsVoice({ voicePreset: preset, voiceEmotion: emotion });
 }

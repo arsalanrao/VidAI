@@ -48,7 +48,8 @@ export function ProjectDetailScreen({ navigation, route }: Props) {
   const [refreshing, setRefreshing] = useState(false);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [retryMessage, setRetryMessage] = useState<string | null>(null);
-  const [selectedVoice, setSelectedVoice] = useState('narrator');
+  const [selectedVoice, setSelectedVoice] = useState('mia');
+  const [selectedEmotion, setSelectedEmotion] = useState('default');
   const [selectedScene, setSelectedScene] = useState<SceneResult | null>(null);
 
   const load = useCallback(async () => {
@@ -178,7 +179,7 @@ export function ProjectDetailScreen({ navigation, route }: Props) {
           onRetryPcRender={handleRetryPcRender}
           onRetryPipeline={() => runAction('pipeline', () => retryPipeline(projectId))}
           onRetryAudio={() =>
-            runAction('audio', () => retryAudio(projectId, selectedVoice))
+            runAction('audio', () => retryAudio(projectId, selectedVoice, selectedEmotion))
           }
           onUpload={() =>
             navigation.navigate('Upload', {
@@ -191,7 +192,9 @@ export function ProjectDetailScreen({ navigation, route }: Props) {
           showPipelineRetry={showPipelineRetry}
           showAudioRetry={showAudioRetry}
           selectedVoice={selectedVoice}
+          selectedEmotion={selectedEmotion}
           onSelectVoice={setSelectedVoice}
+          onSelectEmotion={setSelectedEmotion}
         />
       </ScrollView>
 

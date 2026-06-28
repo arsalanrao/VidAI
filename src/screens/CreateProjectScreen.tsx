@@ -19,6 +19,7 @@ import {
   MOTION_STYLES,
   VISUAL_THEMES,
   VOICE_PRESETS,
+  VOICE_EMOTIONS,
   type ProjectPreferences,
 } from '../constants/creativeOptions';
 import type { RootStackParamList } from '../navigation/types';
@@ -103,10 +104,16 @@ export function CreateProjectScreen({ navigation }: Props) {
               onChange={(value) => updatePreference('motionStyle', value)}
             />
             <OptionPicker
-              label="Voice"
+              label="Voice (Magpie)"
               options={VOICE_PRESETS}
               value={preferences.voicePreset}
               onChange={(value) => updatePreference('voicePreset', value)}
+            />
+            <OptionPicker
+              label="Emotion"
+              options={VOICE_EMOTIONS}
+              value={preferences.voiceEmotion}
+              onChange={(value) => updatePreference('voiceEmotion', value)}
             />
             <OptionPicker
               label="Caption Style"

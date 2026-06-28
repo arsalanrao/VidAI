@@ -157,6 +157,7 @@ export async function registerProjectRoutes(app: FastifyInstance): Promise<void>
         promptOverride?: string;
         thumbnailPromptOverride?: string;
         voicePreset?: string;
+        voiceEmotion?: string;
       };
       const meta = getRecoveryMeta(
         (
@@ -177,6 +178,7 @@ export async function registerProjectRoutes(app: FastifyInstance): Promise<void>
           promptOverride: body.promptOverride,
           thumbnailPromptOverride: body.thumbnailPromptOverride,
           voicePreset: body.voicePreset,
+          voiceEmotion: body.voiceEmotion,
           recoveryAttempt: fromStage === 'audio' ? (meta.recoveryAttempt ?? 0) + 1 : undefined,
           fluxStartAttempt:
             fromStage === 'images'
@@ -224,7 +226,7 @@ export async function registerProjectRoutes(app: FastifyInstance): Promise<void>
     recoveryHandler(request, reply, 'images'),
   );
 
-  app.post<{ Params: { id: string }; Body: { voicePreset?: string } }>(
+  app.post<{ Params: { id: string }; Body: { voicePreset?: string; voiceEmotion?: string } }>(
     '/api/project/:id/retry-audio',
     async (request, reply) => recoveryHandler(request, reply, 'audio'),
   );

@@ -29,7 +29,7 @@ import {
 } from '../services/ai/flux.service.js';
 import { queueCloudRender } from '../services/video/cloud-render-dispatch.service.js';
 import { videoQueue } from '../queues/video.queue.js';
-import type { VoicePreset } from '../types/project-preferences.types.js';
+import type { VoiceEmotion, VoicePreset } from '../types/project-preferences.types.js';
 
 type WorkerJobData =
   | VideoJobData
@@ -76,10 +76,18 @@ async function runStage<T>(
 
 async function continueAfterScript(projectId: string, job: Job<WorkerJobData>): Promise<void> {
   await job.updateProgress(30);
-  await runStage(projectId, 'images', () => runFluxStage(projectId, { skipExisting: true }));
-  await job.updateProgress(70);
   await runStage(projectId, 'audio', () => runTtsStage(projectId));
-  await job.updateProgress(90);
+  await job.updateProgress(50);
+  await runStage(projectId, 'images', () => runFluxStage(projectId, { skipExisting: true }));
+  await job.updateProgress(85);
+  await finishRender(projectId);
+  await job.updateProgress(100);
+}
+
+async function continueAfterAudio(projectId: string, job: Job<WorkerJobData>): Promise<void> {
+  await job.updateProgress(55);
+  await runStage(projectId, 'images', () => runFluxStage(projectId, { skipExisting: true }));
+  await job.updateProgress(85);
   await finishRender(projectId);
   await job.updateProgress(100);
 }
@@ -167,6 +175,16 @@ async function processResumePipelineJob(job: Job<ResumePipelineJobData>): Promis
         ? { [options.sceneId]: options.promptOverride }
         : undefined;
 
+    const project = await prisma.project.findUnique({
+      where: { id: projectId },
+      select: { narrationUrl: true },
+    });
+
+    if (!project?.narrationUrl) {
+      await runStage(projectId, 'audio', () => runTtsStage(projectId));
+      await job.updateProgress(45);
+    }
+
     await runStage(projectId, 'images', () =>
       runFluxStage(projectId, {
         skipExisting: true,
@@ -175,9 +193,7 @@ async function processResumePipelineJob(job: Job<ResumePipelineJobData>): Promis
         thumbnailPromptOverride: options?.thumbnailPromptOverride,
       }),
     );
-    await job.updateProgress(70);
-    await runStage(projectId, 'audio', () => runTtsStage(projectId));
-    await job.updateProgress(90);
+    await job.updateProgress(85);
     await finishRender(projectId);
     await job.updateProgress(100);
     return;
@@ -187,12 +203,11 @@ async function processResumePipelineJob(job: Job<ResumePipelineJobData>): Promis
     await runStage(projectId, 'audio', () =>
       runTtsStage(projectId, {
         voicePreset: options?.voicePreset as VoicePreset | undefined,
+        voiceEmotion: options?.voiceEmotion as VoiceEmotion | undefined,
         recoveryAttempt: options?.recoveryAttempt ?? 0,
       }),
     );
-    await job.updateProgress(90);
-    await finishRender(projectId);
-    await job.updateProgress(100);
+    await continueAfterAudio(projectId, job);
     return;
   }
 
@@ -216,11 +231,11 @@ async function processVideoJob(job: Job<VideoJobData>): Promise<void> {
   await job.updateProgress(5);
 
   await runStage(projectId, 'start', () => runScriptStage(projectId));
-  await job.updateProgress(30);
-  await runStage(projectId, 'images', () => runFluxStage(projectId, { skipExisting: false }));
-  await job.updateProgress(70);
+  await job.updateProgress(25);
   await runStage(projectId, 'audio', () => runTtsStage(projectId));
-  await job.updateProgress(90);
+  await job.updateProgress(45);
+  await runStage(projectId, 'images', () => runFluxStage(projectId, { skipExisting: false }));
+  await job.updateProgress(85);
   await finishRender(projectId);
   await job.updateProgress(100);
 

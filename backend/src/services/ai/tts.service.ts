@@ -1,8 +1,13 @@
 import { env } from '../../config/env.js';
 import type { TtsVoiceConfig } from '../../types/project-preferences.types.js';
 import {
-  VOICE_PRESETS,
-  voicePresetToTtsVoice,
+  MAGPIE_CHARACTERS,
+  magpieEmotionForApi,
+  magpieVoiceFallbackChain,
+  normalizeMagpieVoice,
+} from './magpie-voices.js';
+import {
+  preferencesToTtsVoice,
   type VoicePreset,
 } from '../../types/project-preferences.types.js';
 import {
@@ -15,7 +20,6 @@ import {
   listMagpieGrpcVoices,
   magpieGrpcTts,
 } from './chatterbox-tts.service.js';
-import { magpieVoiceFallbackChain, normalizeMagpieVoice } from './magpie-voices.js';
 
 const OPENAI_TTS_URL = 'https://api.openai.com/v1/audio/speech';
 const DEFAULT_MAGPIE_FUNCTION_ID = '877104f7-e885-42b9-8de8-f6e4c6303969';
@@ -47,7 +51,7 @@ function normalizeInput(text: string): string {
   return input;
 }
 
-async function magpieTts(text: string, voice: string): Promise<Buffer> {
+async function magpieTts(text: string, voice: string, emotion?: string): Promise<Buffer> {
   const apiKey = getMagpieApiKey();
 
   if (!apiKey) {
@@ -60,6 +64,9 @@ async function magpieTts(text: string, voice: string): Promise<Buffer> {
   form.append('language', env.ttsLanguage);
   form.append('text', input);
   form.append('voice', normalizedVoice);
+  if (emotion) {
+    form.append('emotion', emotion);
+  }
 
   const response = await fetch(`${getMagpieBaseUrl()}/v1/audio/synthesize`, {
     method: 'POST',
@@ -108,11 +115,14 @@ async function openaiTts(text: string, voice?: string): Promise<Buffer> {
 }
 
 function resolveVoices(voiceConfig?: TtsVoiceConfig): TtsVoiceConfig {
-  return {
-    chatterboxVoice: voiceConfig?.chatterboxVoice ?? env.chatterboxVoice,
-    magpieVoice: normalizeMagpieVoice(voiceConfig?.magpieVoice ?? env.ttsVoice),
-    openaiVoice: voiceConfig?.openaiVoice,
-  };
+  if (voiceConfig) {
+    return {
+      ...voiceConfig,
+      magpieVoice: normalizeMagpieVoice(voiceConfig.magpieVoice),
+    };
+  }
+
+  return preferencesToTtsVoice({ voicePreset: 'mia', voiceEmotion: 'default' });
 }
 
 function voiceConfigForRecoveryAttempt(
@@ -123,16 +133,19 @@ function voiceConfigForRecoveryAttempt(
     return base;
   }
 
-  const presetIndex = recoveryAttempt % VOICE_PRESETS.length;
-  const preset = VOICE_PRESETS[presetIndex] as VoicePreset;
-  return voicePresetToTtsVoice(preset);
+  const character = MAGPIE_CHARACTERS[recoveryAttempt % MAGPIE_CHARACTERS.length] as VoicePreset;
+  return preferencesToTtsVoice({ voicePreset: character, voiceEmotion: base.magpieEmotion });
 }
 
-async function tryMagpieProviders(text: string, voice: string): Promise<Buffer> {
+async function tryMagpieProviders(
+  text: string,
+  voice: string,
+  emotion?: string,
+): Promise<Buffer> {
   const errors: string[] = [];
 
   try {
-    return await magpieTts(text, voice);
+    return await magpieTts(text, voice, emotion);
   } catch (err) {
     errors.push(`magpie: ${err instanceof Error ? err.message : String(err)}`);
   }
@@ -177,10 +190,11 @@ async function synthesizeWithFallback(
 
   if (getMagpieApiKey()) {
     const voiceChain = magpieVoiceFallbackChain(voices.magpieVoice, recoveryAttempt);
+    const emotion = magpieEmotionForApi(voices.magpieEmotion);
 
     for (const magpieVoice of voiceChain) {
       try {
-        return await tryMagpieProviders(text, magpieVoice);
+        return await tryMagpieProviders(text, magpieVoice, emotion);
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         errors.push(message);

@@ -42,6 +42,7 @@ export type ResumePipelineJobData = {
     promptOverride?: string;
     thumbnailPromptOverride?: string;
     voicePreset?: string;
+    voiceEmotion?: string;
     recoveryAttempt?: number;
     fluxStartAttempt?: number;
     extractMode?: 'default' | 'captions' | 'title_only';

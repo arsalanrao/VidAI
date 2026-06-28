@@ -14,8 +14,8 @@ export type DetailedPipelineStep = {
 export const DETAILED_PIPELINE_STEPS: DetailedPipelineStep[] = [
   { id: 'start', label: 'Starting project' },
   { id: 'script', label: 'Writing script' },
-  { id: 'images', label: 'Creating images' },
   { id: 'audio', label: 'Generating voice' },
+  { id: 'images', label: 'Creating images' },
   { id: 'render', label: 'Rendering video' },
   { id: 'done', label: 'Ready to preview' },
 ];
@@ -108,17 +108,24 @@ export function resolveStepStates(input: {
       (step.id === 'script' &&
         (status === 'processing' || status === 'script_ready') &&
         !stepDone('script', completeness)) ||
-      (step.id === 'images' &&
-        (status === 'processing' || status === 'script_ready' || status === 'images_ready') &&
-        stepDone('script', completeness) &&
-        !stepDone('images', completeness)) ||
       (step.id === 'audio' &&
-        (status === 'processing' || status === 'images_ready' || status === 'narration_ready') &&
-        stepDone('images', completeness) &&
+        (status === 'processing' || status === 'script_ready' || status === 'narration_ready') &&
+        stepDone('script', completeness) &&
         !stepDone('audio', completeness)) ||
-      (step.id === 'render' &&
-        ['rendering', 'rendered_local', 'waiting_for_renderer', 'narration_ready'].includes(status) &&
+      (step.id === 'images' &&
+        (status === 'processing' ||
+          status === 'script_ready' ||
+          status === 'narration_ready' ||
+          status === 'images_ready') &&
+        stepDone('script', completeness) &&
         stepDone('audio', completeness) &&
+        !stepDone('images', completeness)) ||
+      (step.id === 'render' &&
+        ['rendering', 'rendered_local', 'waiting_for_renderer', 'narration_ready', 'images_ready'].includes(
+          status,
+        ) &&
+        stepDone('audio', completeness) &&
+        stepDone('images', completeness) &&
         !stepDone('render', completeness));
 
     states.push(isActive ? 'active' : 'pending');
@@ -241,7 +248,7 @@ export function formatProjectError(
   }
 
   if (stage === 'audio') {
-    return 'Voice generation failed. Pick a different voice below and tap Retry audio — the server will try alternate Magpie voices automatically.';
+    return 'Voice generation failed. Pick a Magpie voice and emotion below, then tap Retry audio.';
   }
 
   if (
@@ -265,13 +272,13 @@ export function statusLabel(status: ProjectStatus): string {
     case 'queued':
       return 'Queued…';
     case 'processing':
-      return 'Generating script, scenes & narration…';
+      return 'Writing script, then voice, images & render…';
     case 'script_ready':
-      return 'Script ready — creating images…';
-    case 'images_ready':
-      return 'Images ready — generating voice…';
+      return 'Script ready — generating voice…';
     case 'narration_ready':
-      return 'Narration ready — starting video render…';
+      return 'Voice ready — creating images…';
+    case 'images_ready':
+      return 'Images ready — starting video render…';
     case 'rendering':
       return 'Rendering video on cloud (FFmpeg motion + captions)…';
     case 'waiting_for_renderer':

@@ -5,7 +5,7 @@ import { CompletenessBar } from './CompletenessBar';
 import type { ProjectCompleteness } from '../types/project';
 import type { ProjectResult, SceneResult } from '../types/project';
 import type { CompletenessStep } from '../utils/projectCompleteness';
-import { VOICE_PRESETS } from '../constants/creativeOptions';
+import { VOICE_EMOTIONS, VOICE_PRESETS } from '../constants/creativeOptions';
 import { colors, spacing } from '../theme/colors';
 
 type Props = {
@@ -20,7 +20,9 @@ type Props = {
   showPipelineRetry: boolean;
   showAudioRetry: boolean;
   selectedVoice: string;
+  selectedEmotion: string;
   onSelectVoice: (voiceId: string) => void;
+  onSelectEmotion: (emotionId: string) => void;
   onRegenerateThumbnail: () => void;
   onRegenerateScene: (sceneId: string) => void;
   onSelectScene: (scene: SceneResult) => void;
@@ -52,7 +54,9 @@ export function ProjectDetailContent({
   showPipelineRetry,
   showAudioRetry,
   selectedVoice,
+  selectedEmotion,
   onSelectVoice,
+  onSelectEmotion,
   onRegenerateThumbnail,
   onRegenerateScene,
   onSelectScene,
@@ -93,7 +97,7 @@ export function ProjectDetailContent({
           ) : null}
           {showAudioRetry ? (
             <View style={styles.audioRetry}>
-              <Text style={styles.audioRetryHint}>Choose a voice and retry narration.</Text>
+              <Text style={styles.audioRetryHint}>Pick a Magpie voice and emotion, then retry.</Text>
               <View style={styles.voiceRow}>
                 {VOICE_PRESETS.map((voice) => (
                   <PrimaryButton
@@ -101,6 +105,17 @@ export function ProjectDetailContent({
                     label={voice.label}
                     variant={selectedVoice === voice.id ? 'primary' : 'secondary'}
                     onPress={() => onSelectVoice(voice.id)}
+                    style={styles.voiceBtn}
+                  />
+                ))}
+              </View>
+              <View style={styles.voiceRow}>
+                {VOICE_EMOTIONS.map((emotion) => (
+                  <PrimaryButton
+                    key={emotion.id}
+                    label={emotion.label}
+                    variant={selectedEmotion === emotion.id ? 'primary' : 'secondary'}
+                    onPress={() => onSelectEmotion(emotion.id)}
                     style={styles.voiceBtn}
                   />
                 ))}

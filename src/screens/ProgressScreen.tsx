@@ -16,7 +16,7 @@ import { PrimaryButton } from '../components/PrimaryButton';
 import { ScreenContainer } from '../components/ScreenContainer';
 import { StepRecoveryPanel } from '../components/StepRecoveryPanel';
 import { pollIntervalForStatus } from '../config/api';
-import { VOICE_PRESETS } from '../constants/creativeOptions';
+import { VOICE_EMOTIONS, VOICE_PRESETS } from '../constants/creativeOptions';
 import type { RootStackParamList } from '../navigation/types';
 import type {
   PipelineFailedStage,
@@ -50,7 +50,8 @@ export function ProgressScreen({ navigation, route }: Props) {
   const [pollError, setPollError] = useState<string | null>(null);
   const [retryMessage, setRetryMessage] = useState<string | null>(null);
   const [recoveringStep, setRecoveringStep] = useState<PipelineFailedStage | null>(null);
-  const [selectedVoice, setSelectedVoice] = useState('narrator');
+  const [selectedVoice, setSelectedVoice] = useState('mia');
+  const [selectedEmotion, setSelectedEmotion] = useState('default');
   const [selectedSceneId, setSelectedSceneId] = useState<string | null>(null);
   const [generatingPrompt, setGeneratingPrompt] = useState(false);
   const [pollEpoch, setPollEpoch] = useState(0);
@@ -319,7 +320,7 @@ export function ProgressScreen({ navigation, route }: Props) {
 
         {showRecovery && failedStage === 'audio' ? (
           <View style={styles.wrap}>
-            <Text style={styles.hint}>Choose a different voice and retry narration.</Text>
+            <Text style={styles.hint}>Pick a Magpie voice and emotion, then retry narration.</Text>
             <View style={styles.scenePickRow}>
               {VOICE_PRESETS.map((voice) => (
                 <PrimaryButton
@@ -331,13 +332,28 @@ export function ProgressScreen({ navigation, route }: Props) {
                 />
               ))}
             </View>
+            <View style={styles.scenePickRow}>
+              {VOICE_EMOTIONS.map((emotion) => (
+                <PrimaryButton
+                  key={emotion.id}
+                  label={emotion.label}
+                  variant={selectedEmotion === emotion.id ? 'primary' : 'secondary'}
+                  onPress={() => setSelectedEmotion(emotion.id)}
+                  style={styles.scenePickBtn}
+                />
+              ))}
+            </View>
             <StepRecoveryPanel
               stepId="audio"
               visible
               loading={recoveringStep === 'audio'}
               showInput={false}
               placeholder=""
-              onRecover={() => runRecovery('audio', () => retryAudio(projectId, selectedVoice))}
+              onRecover={() =>
+                runRecovery('audio', () =>
+                  retryAudio(projectId, selectedVoice, selectedEmotion),
+                )
+              }
             />
           </View>
         ) : null}
