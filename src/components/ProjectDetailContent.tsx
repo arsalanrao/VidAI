@@ -5,6 +5,7 @@ import { CompletenessBar } from './CompletenessBar';
 import type { ProjectCompleteness } from '../types/project';
 import type { ProjectResult, SceneResult } from '../types/project';
 import type { CompletenessStep } from '../utils/projectCompleteness';
+import { VOICE_PRESETS } from '../constants/creativeOptions';
 import { colors, spacing } from '../theme/colors';
 
 type Props = {
@@ -17,11 +18,15 @@ type Props = {
   statusText: string;
   showPcRetry: boolean;
   showPipelineRetry: boolean;
+  showAudioRetry: boolean;
+  selectedVoice: string;
+  onSelectVoice: (voiceId: string) => void;
   onRegenerateThumbnail: () => void;
   onRegenerateScene: (sceneId: string) => void;
   onSelectScene: (scene: SceneResult) => void;
   onRetryPcRender: () => void;
   onRetryPipeline: () => void;
+  onRetryAudio: () => void;
   onUpload: () => void;
 };
 
@@ -45,11 +50,15 @@ export function ProjectDetailContent({
   statusText,
   showPcRetry,
   showPipelineRetry,
+  showAudioRetry,
+  selectedVoice,
+  onSelectVoice,
   onRegenerateThumbnail,
   onRegenerateScene,
   onSelectScene,
   onRetryPcRender,
   onRetryPipeline,
+  onRetryAudio,
   onUpload,
 }: Props) {
   const canRegenAssets = Boolean(project.title);
@@ -79,6 +88,27 @@ export function ProjectDetailContent({
                 loading={actionLoading === 'pipeline'}
                 variant="secondary"
                 onPress={onRetryPipeline}
+              />
+            </View>
+          ) : null}
+          {showAudioRetry ? (
+            <View style={styles.audioRetry}>
+              <Text style={styles.audioRetryHint}>Choose a voice and retry narration.</Text>
+              <View style={styles.voiceRow}>
+                {VOICE_PRESETS.map((voice) => (
+                  <PrimaryButton
+                    key={voice.id}
+                    label={voice.label}
+                    variant={selectedVoice === voice.id ? 'primary' : 'secondary'}
+                    onPress={() => onSelectVoice(voice.id)}
+                    style={styles.voiceBtn}
+                  />
+                ))}
+              </View>
+              <PrimaryButton
+                label="Retry audio"
+                loading={actionLoading === 'audio'}
+                onPress={onRetryAudio}
               />
             </View>
           ) : null}
@@ -266,6 +296,23 @@ const styles = StyleSheet.create({
   },
   btnGap: {
     marginTop: spacing.xs,
+  },
+  audioRetry: {
+    marginTop: spacing.sm,
+    gap: spacing.sm,
+  },
+  audioRetryHint: {
+    color: colors.textMuted,
+    fontSize: 14,
+  },
+  voiceRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.xs,
+  },
+  voiceBtn: {
+    minWidth: '30%',
+    flexGrow: 1,
   },
   retryMsg: {
     fontSize: 14,

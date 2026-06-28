@@ -1,5 +1,6 @@
 import { env } from '../../config/env.js';
 import { rivaListVoices, rivaSynthesizeSpeech } from './riva-grpc.client.js';
+import { normalizeMagpieVoice } from './magpie-voices.js';
 
 // Chatterbox: https://build.nvidia.com/resembleai/chatterbox-multilingual-tts/api
 // Auth: OPENAI_API_KEY only — see docs/TTS_MODELS.md
@@ -117,7 +118,7 @@ export async function magpieGrpcTts(text: string, voiceName?: string): Promise<B
       ...getMagpieGrpcOptions(),
       text: input,
       languageCode: env.ttsLanguage,
-      voiceName: voiceName ?? env.ttsVoice,
+      voiceName: normalizeMagpieVoice(voiceName ?? env.ttsVoice),
     });
   } catch (err) {
     throw formatRivaError('Magpie gRPC TTS', err);

@@ -72,6 +72,8 @@ export type ProjectResult = {
   narrationUrl: string | null;
   scenes: SceneResult[];
   errorMessage: string | null;
+  failedStage?: PipelineFailedStage | null;
+  recoveryAttempt?: number;
   completeness: ProjectCompleteness;
 };
 

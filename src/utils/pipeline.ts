@@ -196,7 +196,14 @@ export function inferFailedStageFromMessage(
     return 'images';
   }
 
-  if (lower.includes('tts') || lower.includes('magpie') || lower.includes('narration')) {
+  if (
+    lower.includes('tts') ||
+    lower.includes('magpie') ||
+    lower.includes('chatterbox') ||
+    lower.includes('narration') ||
+    lower.includes('model is not available') ||
+    (lower.includes('voice') && lower.includes('not found'))
+  ) {
     return 'audio';
   }
 
@@ -234,7 +241,7 @@ export function formatProjectError(
   }
 
   if (stage === 'audio') {
-    return 'Voice generation failed. Pick a different voice preset and tap Retry audio.';
+    return 'Voice generation failed. Pick a different voice below and tap Retry audio — the server will try alternate Magpie voices automatically.';
   }
 
   if (

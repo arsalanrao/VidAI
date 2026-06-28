@@ -4,6 +4,7 @@ import { projectKey, uploadObject } from '../storage/r2.service.js';
 import { r2Configured } from '../../config/env.js';
 import type { ProjectScript } from '../../types/script.types.js';
 import {
+  parseProjectPreferences,
   readProjectPreferences,
   voicePresetToTtsVoice,
   type VoicePreset,
@@ -19,7 +20,7 @@ function parseProjectScript(script: unknown): ProjectScript {
 
 export async function runTtsStage(
   projectId: string,
-  options?: { voicePreset?: VoicePreset },
+  options?: { voicePreset?: VoicePreset; recoveryAttempt?: number },
 ): Promise<{ narrationKey: string }> {
   if (!r2Configured) {
     throw new Error('R2 not configured — add R2 env vars to store narration audio');
@@ -36,11 +37,23 @@ export async function runTtsStage(
   const voicePreset = options?.voicePreset ?? preferences.voicePreset;
   const voiceConfig = voicePresetToTtsVoice(voicePreset);
 
+  if (options?.voicePreset && options.voicePreset !== preferences.voicePreset) {
+    await prisma.project.update({
+      where: { id: projectId },
+      data: {
+        preferences: parseProjectPreferences({ ...preferences, voicePreset: options.voicePreset }),
+      },
+    });
+  }
+
   if (!script.narration?.trim()) {
     throw new Error('Script has no narration text for TTS');
   }
 
-  const audioBuffer = await generateNarrationAudio(script.narration, voiceConfig);
+  const audioBuffer = await generateNarrationAudio(script.narration, {
+    voiceConfig,
+    recoveryAttempt: options?.recoveryAttempt ?? 0,
+  });
   const narrationKey = projectKey(projectId, 'narration.wav');
 
   await uploadObject({

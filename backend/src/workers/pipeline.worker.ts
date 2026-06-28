@@ -187,6 +187,7 @@ async function processResumePipelineJob(job: Job<ResumePipelineJobData>): Promis
     await runStage(projectId, 'audio', () =>
       runTtsStage(projectId, {
         voicePreset: options?.voicePreset as VoicePreset | undefined,
+        recoveryAttempt: options?.recoveryAttempt ?? 0,
       }),
     );
     await job.updateProgress(90);

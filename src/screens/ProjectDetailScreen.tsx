@@ -15,6 +15,7 @@ import {
   regenerateScene,
   regenerateThumbnail,
   resumeProjectRender,
+  retryAudio,
   retryPipeline,
 } from '../api/client';
 import { ProjectDetailContent, SceneImage } from '../components/ProjectDetailContent';
@@ -28,6 +29,7 @@ import {
   canRetryPcRender,
   canRetryPipeline,
   formatProjectError,
+  inferFailedStageFromMessage,
   isPcRenderError,
   statusLabel,
 } from '../utils/pipeline';
@@ -46,6 +48,7 @@ export function ProjectDetailScreen({ navigation, route }: Props) {
   const [refreshing, setRefreshing] = useState(false);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [retryMessage, setRetryMessage] = useState<string | null>(null);
+  const [selectedVoice, setSelectedVoice] = useState('narrator');
   const [selectedScene, setSelectedScene] = useState<SceneResult | null>(null);
 
   const load = useCallback(async () => {
@@ -143,6 +146,12 @@ export function ProjectDetailScreen({ navigation, route }: Props) {
   const showPcRetry =
     canRetryPcRender(project.status) || isPcRenderError(project.errorMessage);
   const showPipelineRetry = canRetryPipeline(project.status);
+  const failedStage =
+    project.failedStage ??
+    (project.status === 'failed' || project.status === 'waiting_for_renderer'
+      ? inferFailedStageFromMessage(project.errorMessage ?? '')
+      : null);
+  const showAudioRetry = failedStage === 'audio' && project.status === 'failed';
 
   return (
     <ScreenContainer style={styles.container}>
@@ -157,7 +166,7 @@ export function ProjectDetailScreen({ navigation, route }: Props) {
           steps={steps}
           actionLoading={actionLoading}
           retryMessage={retryMessage}
-          formattedError={formatProjectError(project.errorMessage)}
+          formattedError={formatProjectError(project.errorMessage, failedStage)}
           statusText={statusLabel(project.status)}
           onRegenerateThumbnail={() =>
             runAction('thumbnail', () => regenerateThumbnail(projectId))
@@ -168,6 +177,9 @@ export function ProjectDetailScreen({ navigation, route }: Props) {
           onSelectScene={setSelectedScene}
           onRetryPcRender={handleRetryPcRender}
           onRetryPipeline={() => runAction('pipeline', () => retryPipeline(projectId))}
+          onRetryAudio={() =>
+            runAction('audio', () => retryAudio(projectId, selectedVoice))
+          }
           onUpload={() =>
             navigation.navigate('Upload', {
               projectId,
@@ -177,6 +189,9 @@ export function ProjectDetailScreen({ navigation, route }: Props) {
           }
           showPcRetry={showPcRetry}
           showPipelineRetry={showPipelineRetry}
+          showAudioRetry={showAudioRetry}
+          selectedVoice={selectedVoice}
+          onSelectVoice={setSelectedVoice}
         />
       </ScrollView>
 

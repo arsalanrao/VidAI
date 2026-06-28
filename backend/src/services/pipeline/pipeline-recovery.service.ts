@@ -124,7 +124,9 @@ export function inferFailedStageFromError(
     lower.includes('tts') ||
     lower.includes('magpie') ||
     lower.includes('chatterbox') ||
-    lower.includes('narration')
+    lower.includes('narration') ||
+    lower.includes('model is not available') ||
+    (lower.includes('voice') && lower.includes('not found'))
   ) {
     return 'audio';
   }

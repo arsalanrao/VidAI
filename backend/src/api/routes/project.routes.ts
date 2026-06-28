@@ -177,6 +177,7 @@ export async function registerProjectRoutes(app: FastifyInstance): Promise<void>
           promptOverride: body.promptOverride,
           thumbnailPromptOverride: body.thumbnailPromptOverride,
           voicePreset: body.voicePreset,
+          recoveryAttempt: fromStage === 'audio' ? (meta.recoveryAttempt ?? 0) + 1 : undefined,
           fluxStartAttempt:
             fromStage === 'images'
               ? (meta.fluxStartAttempt ?? 0) + 2
@@ -484,6 +485,8 @@ export async function registerProjectRoutes(app: FastifyInstance): Promise<void>
     );
 
     const script = project.script as Record<string, unknown> | null;
+    const failedStage = inferFailedStage(project);
+    const recovery = getRecoveryMeta(project.script);
 
     return reply.send({
       id: project.id,
@@ -498,6 +501,8 @@ export async function registerProjectRoutes(app: FastifyInstance): Promise<void>
       script: project.script,
       scenes,
       errorMessage: project.errorMessage,
+      failedStage,
+      recoveryAttempt: recovery.recoveryAttempt ?? 0,
       completeness: computeCompleteness(project),
     });
   });

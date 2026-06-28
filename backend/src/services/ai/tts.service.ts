@@ -1,6 +1,11 @@
 import { env } from '../../config/env.js';
 import type { TtsVoiceConfig } from '../../types/project-preferences.types.js';
 import {
+  VOICE_PRESETS,
+  voicePresetToTtsVoice,
+  type VoicePreset,
+} from '../../types/project-preferences.types.js';
+import {
   chatterboxHttpTts,
   chatterboxTts,
   checkChatterboxConnection,
@@ -10,11 +15,18 @@ import {
   listMagpieGrpcVoices,
   magpieGrpcTts,
 } from './chatterbox-tts.service.js';
+import { magpieVoiceFallbackChain, normalizeMagpieVoice } from './magpie-voices.js';
 
 const OPENAI_TTS_URL = 'https://api.openai.com/v1/audio/speech';
 const DEFAULT_MAGPIE_FUNCTION_ID = '877104f7-e885-42b9-8de8-f6e4c6303969';
 
 export type TtsProvider = 'chatterbox' | 'magpie' | 'openai';
+
+export type TtsSynthesisOptions = {
+  voiceConfig?: TtsVoiceConfig;
+  /** Increments on each audio recovery — rotates Magpie fallback voices. */
+  recoveryAttempt?: number;
+};
 
 function getMagpieApiKey(): string {
   return env.magpieApiKey || env.nvidiaApiKey;
@@ -43,10 +55,11 @@ async function magpieTts(text: string, voice: string): Promise<Buffer> {
   }
 
   const input = normalizeInput(text);
+  const normalizedVoice = normalizeMagpieVoice(voice);
   const form = new FormData();
   form.append('language', env.ttsLanguage);
   form.append('text', input);
-  form.append('voice', voice);
+  form.append('voice', normalizedVoice);
 
   const response = await fetch(`${getMagpieBaseUrl()}/v1/audio/synthesize`, {
     method: 'POST',
@@ -97,63 +110,97 @@ async function openaiTts(text: string, voice?: string): Promise<Buffer> {
 function resolveVoices(voiceConfig?: TtsVoiceConfig): TtsVoiceConfig {
   return {
     chatterboxVoice: voiceConfig?.chatterboxVoice ?? env.chatterboxVoice,
-    magpieVoice: voiceConfig?.magpieVoice ?? env.ttsVoice,
+    magpieVoice: normalizeMagpieVoice(voiceConfig?.magpieVoice ?? env.ttsVoice),
     openaiVoice: voiceConfig?.openaiVoice,
   };
 }
 
+function voiceConfigForRecoveryAttempt(
+  base: TtsVoiceConfig,
+  recoveryAttempt: number,
+): TtsVoiceConfig {
+  if (recoveryAttempt <= 0) {
+    return base;
+  }
+
+  const presetIndex = recoveryAttempt % VOICE_PRESETS.length;
+  const preset = VOICE_PRESETS[presetIndex] as VoicePreset;
+  return voicePresetToTtsVoice(preset);
+}
+
+async function tryMagpieProviders(text: string, voice: string): Promise<Buffer> {
+  const errors: string[] = [];
+
+  try {
+    return await magpieTts(text, voice);
+  } catch (err) {
+    errors.push(`magpie: ${err instanceof Error ? err.message : String(err)}`);
+  }
+
+  try {
+    return await magpieGrpcTts(text, voice);
+  } catch (err) {
+    errors.push(`magpie-grpc: ${err instanceof Error ? err.message : String(err)}`);
+  }
+
+  throw new Error(errors.join(' | '));
+}
+
 /**
- * Chatterbox (best quality) → Magpie HTTP → Magpie gRPC → optional OpenAI.
- * Each provider uses its own voice name from the preset mapping.
+ * Chatterbox → Magpie (with voice fallback chain) → optional OpenAI.
+ * Magpie requires full Riva voice ids (e.g. Magpie-Multilingual.EN-US.Mia).
  */
-async function synthesizeWithFallback(text: string, voiceConfig?: TtsVoiceConfig): Promise<Buffer> {
-  const voices = resolveVoices(voiceConfig);
-  const attempts: Array<{ provider: string; run: () => Promise<Buffer> }> = [];
+async function synthesizeWithFallback(
+  text: string,
+  options?: TtsSynthesisOptions,
+): Promise<Buffer> {
+  const recoveryAttempt = options?.recoveryAttempt ?? 0;
+  const voices = voiceConfigForRecoveryAttempt(
+    resolveVoices(options?.voiceConfig),
+    recoveryAttempt,
+  );
+  const errors: string[] = [];
 
   if (isChatterboxEnabled()) {
-    attempts.push({
-      provider: 'chatterbox',
-      run: () => chatterboxTts(text, voices.chatterboxVoice),
-    });
-    attempts.push({
-      provider: 'chatterbox-http',
-      run: () => chatterboxHttpTts(text, voices.chatterboxVoice),
-    });
+    for (const provider of ['chatterbox', 'chatterbox-http'] as const) {
+      try {
+        if (provider === 'chatterbox') {
+          return await chatterboxTts(text, voices.chatterboxVoice);
+        }
+        return await chatterboxHttpTts(text, voices.chatterboxVoice);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        errors.push(`${provider}: ${message}`);
+      }
+    }
   }
 
   if (getMagpieApiKey()) {
-    attempts.push({
-      provider: 'magpie',
-      run: () => magpieTts(text, voices.magpieVoice),
-    });
-    attempts.push({
-      provider: 'magpie-grpc',
-      run: () => magpieGrpcTts(text, voices.magpieVoice),
-    });
+    const voiceChain = magpieVoiceFallbackChain(voices.magpieVoice, recoveryAttempt);
+
+    for (const magpieVoice of voiceChain) {
+      try {
+        return await tryMagpieProviders(text, magpieVoice);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        errors.push(message);
+      }
+    }
   }
 
   if (env.openaiApiKey && env.ttsFallback === 'openai') {
-    attempts.push({
-      provider: 'openai',
-      run: () => openaiTts(text, voices.openaiVoice),
-    });
+    try {
+      return await openaiTts(text, voices.openaiVoice);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      errors.push(`openai: ${message}`);
+    }
   }
 
-  if (attempts.length === 0) {
+  if (errors.length === 0) {
     throw new Error(
       'No TTS provider configured. Set OPENAI_API_KEY (Chatterbox) and/or MAGPIE_API_KEY / NVIDIA_API_KEY (Magpie).',
     );
-  }
-
-  const errors: string[] = [];
-
-  for (const attempt of attempts) {
-    try {
-      return await attempt.run();
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      errors.push(`${attempt.provider}: ${message}`);
-    }
   }
 
   throw new Error(errors.join(' | '));
@@ -190,9 +237,9 @@ export { listChatterboxVoices, listMagpieGrpcVoices };
 
 export async function generateNarrationAudio(
   text: string,
-  voiceConfig?: TtsVoiceConfig,
+  options?: TtsSynthesisOptions,
 ): Promise<Buffer> {
-  return synthesizeWithFallback(text, voiceConfig);
+  return synthesizeWithFallback(text, options);
 }
 
 export async function checkTtsConnection(): Promise<{
